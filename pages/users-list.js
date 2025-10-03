@@ -64,6 +64,7 @@ const UsersList = () => {
   const [migrationStatus, setMigrationStatus] = useState({});
   const [profileDetailsStatus, setProfileDetailsStatus] = useState({});
   const [transferring, setTransferring] = useState(false);
+  const [profileCheckPerformed, setProfileCheckPerformed] = useState(false);
 
   // Fetch all users from the users-plan node in Realtime Database
   const fetchUsers = async () => {
@@ -189,6 +190,7 @@ const UsersList = () => {
     setExpandedUser(null);
     setMigrationStatus({});
     setProfileDetailsStatus({});
+    setProfileCheckPerformed(false);
   };
 
   // Force refresh with detailed logging
@@ -208,6 +210,7 @@ const UsersList = () => {
       setExpandedUser(null);
       setMigrationStatus({});
       setProfileDetailsStatus({});
+      setProfileCheckPerformed(false);
       
       // Wait a moment for state to clear
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -383,6 +386,7 @@ const UsersList = () => {
   const checkAllProfileDetails = async () => {
     setLoading(true);
     setError(null);
+    setProfileCheckPerformed(true);
     
     console.log('Checking profile details for all users...');
     
@@ -393,6 +397,30 @@ const UsersList = () => {
     }
     
     setLoading(false);
+  };
+
+  // Get users that need data transfer
+  const getUsersNeedingTransfer = () => {
+    return users.filter(user => {
+      const profileStatus = profileDetailsStatus[user.id];
+      return profileStatus?.exists && !profileStatus?.transferred;
+    });
+  };
+
+  // Get users that have been transferred
+  const getTransferredUsers = () => {
+    return users.filter(user => {
+      const profileStatus = profileDetailsStatus[user.id];
+      return profileStatus?.transferred;
+    });
+  };
+
+  // Get users with no profile details
+  const getUsersWithNoProfile = () => {
+    return users.filter(user => {
+      const profileStatus = profileDetailsStatus[user.id];
+      return !profileStatus?.exists && !profileStatus?.transferred;
+    });
   };
 
   // Format data for display
@@ -520,9 +548,9 @@ const UsersList = () => {
         >
           <Typography variant="body2">
             <strong>Users Plan Summary:</strong> Found {users.length} users with plan data from Realtime Database.
-            {Object.keys(profileDetailsStatus).length > 0 && (
+            {profileCheckPerformed && (
               <span> 
-                {Object.values(profileDetailsStatus).filter(status => status.exists).length} users have profile details in Firestore.
+                {getUsersNeedingTransfer().length} users need data transfer, {getTransferredUsers().length} users already transferred, {getUsersWithNoProfile().length} users have no profile details.
               </span>
             )}
           </Typography>
@@ -535,7 +563,7 @@ const UsersList = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Users Plan Data ({users.length} users found)
+                {profileCheckPerformed ? 'Users by Transfer Status' : 'Users Plan Data'} ({users.length} users found)
               </Typography>
               <Divider sx={{ mb: 2 }} />
               
@@ -543,115 +571,268 @@ const UsersList = () => {
                 <Typography color="text.secondary" align="center" py={4}>
                   No users found in users-plan node
                 </Typography>
+              ) : !profileCheckPerformed ? (
+                <Box textAlign="center" py={4}>
+                  <Typography color="text.secondary" variant="body1" gutterBottom>
+                    Click "Check Profile Details" to see which users need data transfer
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    onClick={checkAllProfileDetails}
+                    disabled={loading}
+                    startIcon={<PersonIcon />}
+                    sx={{ mt: 2 }}
+                  >
+                    Check Profile Details
+                  </Button>
+                </Box>
               ) : (
-                <List>
-                  {users.map((user, index) => {
-                    const profileStatus = profileDetailsStatus[user.id];
-                    const userMigrationStatus = migrationStatus[user.id];
-                    
-                    return (
-                      <React.Fragment key={user.id}>
-                        <ListItem disablePadding>
-                          <Box sx={{ width: '100%' }}>
-                            <ListItemButton
-                              onClick={() => handleUserClick(user)}
-                              selected={selectedUser?.id === user.id}
-                              sx={{
-                                borderRadius: 1,
-                                mb: 1,
-                                '&.Mui-selected': {
-                                  backgroundColor: 'primary.light',
-                                  '&:hover': {
-                                    backgroundColor: 'primary.main',
-                                  },
-                                },
-                              }}
-                            >
-                              <PersonIcon sx={{ mr: 2, color: 'primary.main' }} />
-                              <ListItemText
-                                primary={
-                                  <Box display="flex" alignItems="center" gap={1}>
-                                    <Typography variant="subtitle1" fontWeight="medium">
-                                      {user.id}
-                                    </Typography>
-                                    {user.email && (
-                                      <Chip
-                                        label={user.email}
+                <Box>
+                  {/* Users Needing Transfer */}
+                  {getUsersNeedingTransfer().length > 0 && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="h6" color="warning.main" gutterBottom>
+                        ⚠️ Users Needing Data Transfer ({getUsersNeedingTransfer().length})
+                      </Typography>
+                      <List>
+                        {getUsersNeedingTransfer().map((user, index) => {
+                          const profileStatus = profileDetailsStatus[user.id];
+                          const userMigrationStatus = migrationStatus[user.id];
+                          
+                          return (
+                            <React.Fragment key={user.id}>
+                              <ListItem disablePadding>
+                                <Box sx={{ width: '100%' }}>
+                                  <ListItemButton
+                                    onClick={() => handleUserClick(user)}
+                                    selected={selectedUser?.id === user.id}
+                                    sx={{
+                                      borderRadius: 1,
+                                      mb: 1,
+                                      '&.Mui-selected': {
+                                        backgroundColor: 'primary.light',
+                                        '&:hover': {
+                                          backgroundColor: 'primary.main',
+                                        },
+                                      },
+                                    }}
+                                  >
+                                    <PersonIcon sx={{ mr: 2, color: 'warning.main' }} />
+                                    <ListItemText
+                                      primary={
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                          <Typography variant="subtitle1" fontWeight="medium">
+                                            {user.id}
+                                          </Typography>
+                                          {user.email && (
+                                            <Chip
+                                              label={user.email}
+                                              size="small"
+                                              variant="outlined"
+                                              color="primary"
+                                            />
+                                          )}
+                                          {user.planName && (
+                                            <Chip
+                                              label={user.planName}
+                                              size="small"
+                                              color="secondary"
+                                              icon={<SubscriptionIcon />}
+                                            />
+                                          )}
+                                          <Chip
+                                            label={`${profileStatus.fields.length} profile fields`}
+                                            size="small"
+                                            color="warning"
+                                            icon={<PersonIcon />}
+                                          />
+                                        </Box>
+                                      }
+                                      secondary={
+                                        <Typography variant="body2" color="text.secondary">
+                                          Click to view plan details
+                                        </Typography>
+                                      }
+                                    />
+                                  </ListItemButton>
+                                  
+                                  {/* Profile Details Transfer Button */}
+                                  <Box sx={{ px: 2, pb: 1 }}>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                      <Button
                                         size="small"
-                                        variant="outlined"
-                                        color="primary"
-                                      />
-                                    )}
-                                    {user.planName && (
-                                      <Chip
-                                        label={user.planName}
-                                        size="small"
-                                        color="secondary"
-                                        icon={<SubscriptionIcon />}
-                                      />
-                                    )}
-                                    {profileStatus?.exists && (
-                                      <Chip
-                                        label={`${profileStatus.fields.length} profile fields`}
-                                        size="small"
+                                        variant="contained"
+                                        startIcon={<MigrateIcon />}
+                                        disabled={transferring}
+                                        onClick={() => transferProfileDetails(user.id)}
                                         color="warning"
-                                        icon={<PersonIcon />}
-                                      />
-                                    )}
-                                    {profileStatus?.transferred && (
+                                      >
+                                        {transferring ? 'Transferring...' : 'Transfer Profile Data'}
+                                      </Button>
+                                      
+                                      {userMigrationStatus?.message && (
+                                        <Typography 
+                                          variant="caption" 
+                                          color={
+                                            userMigrationStatus.status === 'success' ? 'success.main' :
+                                            userMigrationStatus.status === 'error' ? 'error.main' : 'text.secondary'
+                                          }
+                                        >
+                                          {userMigrationStatus.message}
+                                        </Typography>
+                                      )}
+                                    </Stack>
+                                  </Box>
+                                </Box>
+                              </ListItem>
+                              {index < getUsersNeedingTransfer().length - 1 && <Divider />}
+                            </React.Fragment>
+                          );
+                        })}
+                      </List>
+                    </Box>
+                  )}
+
+                  {/* Transferred Users */}
+                  {getTransferredUsers().length > 0 && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="h6" color="success.main" gutterBottom>
+                        ✅ Transferred Users ({getTransferredUsers().length})
+                      </Typography>
+                      <List>
+                        {getTransferredUsers().map((user, index) => (
+                          <React.Fragment key={user.id}>
+                            <ListItem disablePadding>
+                              <ListItemButton
+                                onClick={() => handleUserClick(user)}
+                                selected={selectedUser?.id === user.id}
+                                sx={{
+                                  borderRadius: 1,
+                                  mb: 1,
+                                  '&.Mui-selected': {
+                                    backgroundColor: 'primary.light',
+                                    '&:hover': {
+                                      backgroundColor: 'primary.main',
+                                    },
+                                  },
+                                }}
+                              >
+                                <PersonIcon sx={{ mr: 2, color: 'success.main' }} />
+                                <ListItemText
+                                  primary={
+                                    <Box display="flex" alignItems="center" gap={1}>
+                                      <Typography variant="subtitle1" fontWeight="medium">
+                                        {user.id}
+                                      </Typography>
+                                      {user.email && (
+                                        <Chip
+                                          label={user.email}
+                                          size="small"
+                                          variant="outlined"
+                                          color="primary"
+                                        />
+                                      )}
+                                      {user.planName && (
+                                        <Chip
+                                          label={user.planName}
+                                          size="small"
+                                          color="secondary"
+                                          icon={<SubscriptionIcon />}
+                                        />
+                                      )}
                                       <Chip
                                         label="Transferred"
                                         size="small"
                                         color="success"
                                         icon={<CheckCircleIcon />}
                                       />
-                                    )}
-                                  </Box>
-                                }
-                                secondary={
-                                  <Typography variant="body2" color="text.secondary">
-                                    Click to view plan details
-                                  </Typography>
-                                }
-                              />
-                            </ListItemButton>
-                            
-                            {/* Profile Details Transfer Button */}
-                            {profileStatus?.exists && (
-                              <Box sx={{ px: 2, pb: 1 }}>
-                                <Stack direction="row" spacing={1} alignItems="center">
-                                  <Button
-                                    size="small"
-                                    variant="contained"
-                                    startIcon={<MigrateIcon />}
-                                    disabled={transferring}
-                                    onClick={() => transferProfileDetails(user.id)}
-                                    color="warning"
-                                  >
-                                    {transferring ? 'Transferring...' : 'Transfer Profile Data'}
-                                  </Button>
-                                  
-                                  {userMigrationStatus?.message && (
-                                    <Typography 
-                                      variant="caption" 
-                                      color={
-                                        userMigrationStatus.status === 'success' ? 'success.main' :
-                                        userMigrationStatus.status === 'error' ? 'error.main' : 'text.secondary'
-                                      }
-                                    >
-                                      {userMigrationStatus.message}
+                                    </Box>
+                                  }
+                                  secondary={
+                                    <Typography variant="body2" color="text.secondary">
+                                      Click to view plan details
                                     </Typography>
-                                  )}
-                                </Stack>
-                              </Box>
-                            )}
-                          </Box>
-                        </ListItem>
-                        {index < users.length - 1 && <Divider />}
-                      </React.Fragment>
-                    );
-                  })}
-                </List>
+                                  }
+                                />
+                              </ListItemButton>
+                            </ListItem>
+                            {index < getTransferredUsers().length - 1 && <Divider />}
+                          </React.Fragment>
+                        ))}
+                      </List>
+                    </Box>
+                  )}
+
+                  {/* Users with No Profile */}
+                  {getUsersWithNoProfile().length > 0 && (
+                    <Box>
+                      <Typography variant="h6" color="text.secondary" gutterBottom>
+                        ℹ️ Users with No Profile Details ({getUsersWithNoProfile().length})
+                      </Typography>
+                      <List>
+                        {getUsersWithNoProfile().map((user, index) => (
+                          <React.Fragment key={user.id}>
+                            <ListItem disablePadding>
+                              <ListItemButton
+                                onClick={() => handleUserClick(user)}
+                                selected={selectedUser?.id === user.id}
+                                sx={{
+                                  borderRadius: 1,
+                                  mb: 1,
+                                  '&.Mui-selected': {
+                                    backgroundColor: 'primary.light',
+                                    '&:hover': {
+                                      backgroundColor: 'primary.main',
+                                    },
+                                  },
+                                }}
+                              >
+                                <PersonIcon sx={{ mr: 2, color: 'text.secondary' }} />
+                                <ListItemText
+                                  primary={
+                                    <Box display="flex" alignItems="center" gap={1}>
+                                      <Typography variant="subtitle1" fontWeight="medium">
+                                        {user.id}
+                                      </Typography>
+                                      {user.email && (
+                                        <Chip
+                                          label={user.email}
+                                          size="small"
+                                          variant="outlined"
+                                          color="primary"
+                                        />
+                                      )}
+                                      {user.planName && (
+                                        <Chip
+                                          label={user.planName}
+                                          size="small"
+                                          color="secondary"
+                                          icon={<SubscriptionIcon />}
+                                        />
+                                      )}
+                                      <Chip
+                                        label="No Profile"
+                                        size="small"
+                                        color="default"
+                                        variant="outlined"
+                                      />
+                                    </Box>
+                                  }
+                                  secondary={
+                                    <Typography variant="body2" color="text.secondary">
+                                      Click to view plan details
+                                    </Typography>
+                                  }
+                                />
+                              </ListItemButton>
+                            </ListItem>
+                            {index < getUsersWithNoProfile().length - 1 && <Divider />}
+                          </React.Fragment>
+                        ))}
+                      </List>
+                    </Box>
+                  )}
+                </Box>
               )}
             </CardContent>
           </Card>
