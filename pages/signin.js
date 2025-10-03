@@ -214,12 +214,6 @@ const SignIn = () => {
           </CardContent>
         </Paper>
 
-        {/* Footer */}
-        <Box textAlign="center" mt={3}>
-          <Typography variant="body2" color="white" sx={{ opacity: 0.8 }}>
-            Secure admin access to TheEcomWay platform
-          </Typography>
-        </Box>
       </Container>
     </Box>
   );
