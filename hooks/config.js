@@ -6,20 +6,20 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "your-api-key-here",
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "your-project.firebaseapp.com",
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "your-project-id",
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "your-project.appspot.com",
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "your-sender-id",
-  appId: process.env.REACT_APP_FIREBASE_APP_ID || "your-app-id",
-  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || "your-measurement-id",
-  databaseURL: process.env.REACT_APP_FIREBASE_DATABASE_URL || "https://your-project.firebaseio.com",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "your-api-key-here",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "your-project.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "your-project-id",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "your-project.appspot.com",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "your-sender-id",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "your-app-id",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "your-measurement-id",
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || "https://your-project.firebaseio.com",
 };
 
 // Validate that we have the essential Firebase config
-if (!process.env.REACT_APP_FIREBASE_API_KEY) {
+if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
   console.warn("⚠️  Firebase API key not found in environment variables. Using fallback values.");
-  console.warn("Please set REACT_APP_FIREBASE_API_KEY in your Vercel environment variables.");
+  console.warn("Please set NEXT_PUBLIC_FIREBASE_API_KEY in your Vercel environment variables.");
 }
 
 console.log("Firebase Config:", {
