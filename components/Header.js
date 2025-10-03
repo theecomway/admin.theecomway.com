@@ -37,6 +37,9 @@ const Header = () => {
       await signInWithGoogle();
     } catch (error) {
       console.error('Sign in failed:', error);
+      if (error.code === 'auth/operation-not-allowed') {
+        alert('Google Sign-In is not enabled. Please enable it in Firebase Console under Authentication > Sign-in method > Google');
+      }
     }
   };
 

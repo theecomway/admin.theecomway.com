@@ -132,6 +132,11 @@ const Sidebar = ({ onClose }) => {
       icon: <Settings />,
       path: '/user-plans',
     },
+    {
+      title: 'Users List',
+      icon: <Person />,
+      path: '/users-list',
+    },
   ];
 
   const renderMenuItem = (item) => {

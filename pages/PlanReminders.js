@@ -60,7 +60,6 @@ const PlanDashboard = () => {
   const filteredPlans = plans.filter(
     (p) => p.daysLeft === TABS[tabIndex].daysLeft
   );
-  debugger;
 
   return (
     <Box p={2}>

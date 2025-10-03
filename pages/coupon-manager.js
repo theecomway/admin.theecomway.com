@@ -22,8 +22,6 @@ import { getDatabase, onValue, ref, set } from "firebase/database";
 
 import { database } from "../hooks/config";
 
-const isProduction = process.env.NODE_ENV === "production";
-const basePath = isProduction ? "" : "test";
 
 const CouponManager = () => {
   const [coupons, setCoupons] = useState({});
@@ -31,7 +29,7 @@ const CouponManager = () => {
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
-    const couponsRef = ref(database, `${basePath}/coupon-codes`);
+    const couponsRef = ref(database, "coupon-codes");
     onValue(couponsRef, (snapshot) => {
       if (snapshot.exists()) {
         setCoupons(snapshot.val());
@@ -83,7 +81,7 @@ const CouponManager = () => {
     if (!confirmed) return;
 
     const db = getDatabase();
-    const couponRef = ref(db, `${basePath}/coupon-codes/${couponKey}`);
+    const couponRef = ref(db, `coupon-codes/${couponKey}`);
     set(couponRef, null);
   };
 
@@ -101,7 +99,7 @@ const CouponManager = () => {
     } = selectedCoupon;
 
     const finalKey = key.toLowerCase();
-    const saveRef = ref(db, `${basePath}/coupon-codes/${finalKey}`);
+    const saveRef = ref(db, `coupon-codes/${finalKey}`);
 
     await set(saveRef, {
       discount: {

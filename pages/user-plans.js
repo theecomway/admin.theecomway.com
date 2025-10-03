@@ -19,9 +19,7 @@ import { onValue, ref, remove } from "firebase/database";
 import { database } from "../hooks/config";
 import dayjs from "dayjs";
 
-const isProduction = process.env.NODE_ENV === "production";
-const basePath = isProduction ? "" : "test";
-const USER_PLANS_PATH = `${basePath}/users-plan`;
+const USER_PLANS_PATH = "users-plan";
 
 const PlansDashboard = () => {
   const [plans, setPlans] = useState([]);

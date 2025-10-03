@@ -3,16 +3,20 @@ import {
   Button,
   CircularProgress,
   Collapse,
+  FormControl,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   TextField,
   Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 import React, { useState } from "react";
-import { get, ref } from "firebase/database";
+import { collection, query, where, getDocs, doc, getDoc, orderBy, limit, startAt, endAt } from "firebase/firestore";
 
-import { database } from "../hooks/config";
+import { firestore } from "../hooks/config";
 
 const createWhatsAppLink = (phoneNumber, message) => {
   const encodedMessage = encodeURIComponent(message);
@@ -20,11 +24,14 @@ const createWhatsAppLink = (phoneNumber, message) => {
 };
 
 const UserDashboard = () => {
-  const [email, setEmail] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchType, setSearchType] = useState("email");
   const [userData, setUserData] = useState(null);
+  const [allMatches, setAllMatches] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showSkuDetails, setShowSkuDetails] = useState(false);
+  const [showAllMatches, setShowAllMatches] = useState(false);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -42,64 +49,99 @@ const UserDashboard = () => {
     setLoading(true);
 
     try {
-      const snapshot = await get(ref(database, "users-details"));
       let userId = null;
-      let phoneNumber = null;
+      let userEmail = null;
+      let userPhoneNumber = null;
 
-      snapshot.forEach((childSnap) => {
-        const details = childSnap.val().details;
-        if (details?.email === email.trim()) {
-          userId = childSnap.key;
-          phoneNumber = details?.phoneNumber || null;
+      if (searchType === "email") {
+        // Simple approach: get all users and filter client-side
+        const searchValue = searchTerm.trim().toLowerCase();
+        const usersRef = collection(firestore, "users");
+        
+        try {
+          console.log("Fetching all users for email search:", searchValue);
+          const snapshot = await getDocs(usersRef);
+          console.log("Total users fetched:", snapshot.size);
+          
+          snapshot.forEach((doc) => {
+            const userData = doc.data();
+            const profileDetails = userData?.profile?.details;
+            if (profileDetails?.email?.toLowerCase().includes(searchValue)) {
+              userId = doc.id;
+              userEmail = profileDetails.email;
+              userPhoneNumber = profileDetails.phone || null;
+              console.log("Found user:", { userId, userEmail, userPhoneNumber });
+            }
+          });
+        } catch (error) {
+          console.error("Email search error:", error);
+          console.error("Error details:", error.code, error.message);
+          setError(`Error searching for email: ${error.message}. Please try again.`);
+          setLoading(false);
+          return;
         }
-      });
+      } else if (searchType === "phone") {
+        // Simple approach: get all users and filter client-side
+        const phoneSearchValue = searchTerm.trim();
+        const usersRef = collection(firestore, "users");
+        
+        try {
+          console.log("Fetching all users for phone search:", phoneSearchValue);
+          const snapshot = await getDocs(usersRef);
+          console.log("Total users fetched:", snapshot.size);
+          
+          snapshot.forEach((doc) => {
+            const userData = doc.data();
+            const profileDetails = userData?.profile?.details;
+            if (profileDetails?.phone?.includes(phoneSearchValue)) {
+              userId = doc.id;
+              userEmail = profileDetails.email;
+              userPhoneNumber = profileDetails.phone;
+              console.log("Found user by phone:", { userId, userEmail, userPhoneNumber });
+            }
+          });
+        } catch (error) {
+          console.error("Phone search error:", error);
+          console.error("Error details:", error.code, error.message);
+          setError(`Error searching for phone: ${error.message}. Please try again.`);
+          setLoading(false);
+          return;
+        }
+      }
 
       if (!userId) {
-        setError("User not found.");
+        setError("No users found matching your search criteria.");
         setLoading(false);
         return;
       }
 
-      const [planSnap, amazonSnap, flipkartSnap, meeshoSnap, profitSnap] =
+      // Use UID-based paths to fetch user data from Firestore
+      const [planSnap, flipkartSnap, meeshoSnap] =
         await Promise.all([
-          get(ref(database, `users-plan/${userId}/plan-details`)),
-          get(
-            ref(
-              database,
-              `users-activity/amazon-labels-cropped/${userId}/labels-processed`
-            )
-          ),
-          get(
-            ref(
-              database,
-              `users-activity/flipkart-labels-cropped/${userId}/labels-processed`
-            )
-          ),
-          get(
-            ref(
-              database,
-              `users-activity/meesho-labels-cropped/${userId}/labels-processed`
-            )
-          ),
-          get(
-            ref(
-              database,
-              `users-activity/amazon-profit-calculator/${userId}/purchase-price-by-sku`
-            )
-          ),
+          getDoc(doc(firestore, "users-plan", userId)),
+          getDoc(doc(firestore, "users-activity", "flipkart-labels-cropped", userId)),
+          getDoc(doc(firestore, "users-activity", "meesho-labels-cropped", userId)),
         ]);
 
       setUserData({
         userId,
-        phoneNumber,
-        plan: planSnap.exists() ? planSnap.val() : null,
+        email: userEmail,
+        phoneNumber: userPhoneNumber,
+        plan: planSnap.exists() ? planSnap.data() : null,
         activity: {
-          amazon: amazonSnap.val()?.totalCropped || 0,
-          flipkart: flipkartSnap.val()?.totalCropped || 0,
-          meesho: meeshoSnap.val()?.totalCropped || 0,
+          flipkart: flipkartSnap.data()?.labelsProcessed?.totalCropped || 0,
+          meesho: meeshoSnap.data()?.labelsProcessed?.totalCropped || 0,
         },
-        skuPrices: profitSnap.exists() ? profitSnap.val() : {},
+        flipkartData: flipkartSnap.exists() ? flipkartSnap.data() : {},
+        meeshoData: meeshoSnap.exists() ? meeshoSnap.data() : {},
       });
+
+      // Set allMatches for compatibility with existing UI
+      setAllMatches([{
+        userId,
+        email: userEmail,
+        phoneNumber: userPhoneNumber,
+      }]);
     } catch (err) {
       console.error(err);
       setError("Something went wrong.");
@@ -128,13 +170,27 @@ const UserDashboard = () => {
         }}
       >
         <Typography variant="h5" mb={3} fontWeight={600} textAlign="center">
-          🔍 Search User by Email
+          🔍 Search User
         </Typography>
+        
+        <FormControl fullWidth sx={{ mb: 2 }}>
+          <InputLabel>Search By</InputLabel>
+          <Select
+            value={searchType}
+            label="Search By"
+            onChange={(e) => setSearchType(e.target.value)}
+          >
+            <MenuItem value="email">Email (Partial Match)</MenuItem>
+            <MenuItem value="phone">Phone Number</MenuItem>
+          </Select>
+        </FormControl>
+
         <TextField
           fullWidth
-          label="Enter Email Address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          label={searchType === "email" ? "Enter Email (Partial Match)" : "Enter Phone Number"}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder={searchType === "email" ? "e.g., john, @gmail.com" : "e.g., 9876543210"}
           sx={{ mb: 2 }}
         />
         <Button
@@ -169,6 +225,50 @@ const UserDashboard = () => {
               {userData.userId}
             </Typography>
           </Typography>
+
+          <Typography variant="body1" gutterBottom>
+            📧 Email:{" "}
+            <Typography component="span" fontWeight="bold">
+              {userData.email || "Not available"}
+            </Typography>
+          </Typography>
+
+          {/* Show multiple matches indicator */}
+          {allMatches.length > 1 && (
+            <Box mt={2} mb={2}>
+              <Typography variant="body2" color="info.main" gutterBottom>
+                ⚠️ Found {allMatches.length} matching users. Showing the first one.
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setShowAllMatches(!showAllMatches)}
+              >
+                {showAllMatches ? "Hide" : "Show"} All Matches
+              </Button>
+              
+              <Collapse in={showAllMatches}>
+                <Box mt={2} p={2} bgcolor="#f5f5f5" borderRadius={1}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    All Matching Users:
+                  </Typography>
+                  {allMatches.map((match, index) => (
+                    <Box key={index} mb={1} p={1} bgcolor="white" borderRadius={1}>
+                      <Typography variant="body2">
+                        <strong>User ID:</strong> {match.userId}
+                      </Typography>
+                      <Typography variant="body2">
+                        <strong>Email:</strong> {match.email || "Not available"}
+                      </Typography>
+                      <Typography variant="body2">
+                        <strong>Phone:</strong> {match.phoneNumber || "Not available"}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Collapse>
+            </Box>
+          )}
 
           {userData.plan && (
             <>
@@ -238,28 +338,53 @@ const UserDashboard = () => {
             <Typography variant="subtitle1" fontWeight="bold">
               📦 Label Cropping Activity
             </Typography>
-            <Typography>Amazon: {userData.activity.amazon}</Typography>
             <Typography>Flipkart: {userData.activity.flipkart}</Typography>
             <Typography>Meesho: {userData.activity.meesho}</Typography>
           </Box>
 
-          {/* 🔽 Toggle to Show SKU Prices */}
-          {Object.keys(userData.skuPrices).length > 0 && (
+          {/* 🔽 Toggle to Show Platform Details */}
+          {(Object.keys(userData.flipkartData).length > 0 || Object.keys(userData.meeshoData).length > 0) && (
             <Box mt={3}>
               <Button
                 variant="text"
                 onClick={() => setShowSkuDetails((prev) => !prev)}
               >
-                {showSkuDetails ? "Hide" : "Show"} SKU Purchase Details
+                {showSkuDetails ? "Hide" : "Show"} Platform Activity Details
               </Button>
 
               <Collapse in={showSkuDetails}>
                 <Box mt={2}>
-                  {Object.entries(userData.skuPrices).map(([sku, data]) => (
-                    <Typography key={sku}>
-                      {sku}: ₹{data.purchasePrice}
-                    </Typography>
-                  ))}
+                  {Object.keys(userData.flipkartData).length > 0 && (
+                    <Box mb={2}>
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        🛒 Flipkart Activity:
+                      </Typography>
+                      <Typography variant="body2">
+                        Total Cropped: {userData.flipkartData.labelsProcessed?.totalCropped || 0}
+                      </Typography>
+                      {userData.flipkartData.labelsProcessed?.lastProcessed && (
+                        <Typography variant="body2">
+                          Last Processed: {new Date(userData.flipkartData.labelsProcessed.lastProcessed).toLocaleString()}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                  
+                  {Object.keys(userData.meeshoData).length > 0 && (
+                    <Box mb={2}>
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        🛍️ Meesho Activity:
+                      </Typography>
+                      <Typography variant="body2">
+                        Total Cropped: {userData.meeshoData.labelsProcessed?.totalCropped || 0}
+                      </Typography>
+                      {userData.meeshoData.labelsProcessed?.lastProcessed && (
+                        <Typography variant="body2">
+                          Last Processed: {new Date(userData.meeshoData.labelsProcessed.lastProcessed).toLocaleString()}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
                 </Box>
               </Collapse>
             </Box>

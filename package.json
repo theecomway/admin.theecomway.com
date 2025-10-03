@@ -42,13 +42,13 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "dev": "next dev",
     "build": "next build",
-    "versel-build": "react-scripts build",
+    "start": "next start",
+    "lint": "next lint",
+    "vercel-build": "next build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "deploy": "next build",
-    "dev": "next dev --turbopack"
+    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [

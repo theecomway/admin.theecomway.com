@@ -22,7 +22,6 @@ const FlipkartLogin = () => {
         throw new Error("Login request failed");
       }
 
-      debugger;
       const data = await response.json();
       //EXTRACT COOKIES
       // const cookies = response.headers.get("set-cookie");
@@ -43,7 +42,6 @@ const FlipkartLogin = () => {
   };
 
   const handleVerifyOtp = async () => {
-    debugger;
     try {
       const response = await fetch("/api/flipkart-verify-otp", {
         method: "POST",

@@ -30,7 +30,7 @@ const LogViewer = () => {
   const [tabIndex, setTabIndex] = useState(0);
 
   useEffect(() => {
-    const logsRef = ref(database, "test/logs");
+    const logsRef = ref(database, "logs");
     onValue(logsRef, (snapshot) => {
       const data = snapshot.val() || {};
       setLogs(data);

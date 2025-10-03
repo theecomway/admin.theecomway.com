@@ -20,9 +20,7 @@ import relativeTime from "dayjs/plugin/relativeTime";
 
 dayjs.extend(relativeTime);
 
-const isProduction = process.env.NODE_ENV === "production";
-const basePath = isProduction ? "" : "test";
-const OTP_REQUESTS_PATH = `${basePath}/otp_requests`;
+const OTP_REQUESTS_PATH = "otp_requests";
 const TEN_DAYS_MS = 5 * 24 * 60 * 60 * 1000; // 10 days in milliseconds
 const MAX_REMINDERS = 3;
 

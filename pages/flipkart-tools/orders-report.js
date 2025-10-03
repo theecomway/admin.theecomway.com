@@ -52,7 +52,6 @@ const OrdersSummary = () => {
         return;
       }
 
-      debugger;
 
       // ─── Hard-coded range ───────────────────────────────
       sheet["!ref"] = "A1:Z10000"; // set
