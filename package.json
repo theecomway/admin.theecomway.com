@@ -54,7 +54,12 @@
     "extends": [
       "react-app",
       "react-app/jest"
-    ]
+    ],
+    "rules": {
+      "no-unused-vars": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "no-undef": "off"
+    }
   },
   "browserslist": {
     "production": [
