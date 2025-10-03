@@ -14,7 +14,7 @@ import {
   useTheme,
 } from "@mui/material";
 import React, { useState } from "react";
-import { collection, query, where, getDocs, doc, getDoc, orderBy, limit, startAt, endAt } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, orderBy, limit, startAt, endAt, or } from "firebase/firestore";
 
 import { firestore } from "../hooks/config";
 
@@ -28,6 +28,7 @@ const UserDashboard = () => {
   const [searchType, setSearchType] = useState("email");
   const [userData, setUserData] = useState(null);
   const [allMatches, setAllMatches] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showSkuDetails, setShowSkuDetails] = useState(false);
@@ -42,9 +43,80 @@ const UserDashboard = () => {
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 
+  const handleUserSelect = async (userId) => {
+    setSelectedUserId(userId);
+    setLoading(true);
+    setError("");
+
+    try {
+      // Get user data and plan data from Firestore
+      const [userDocSnap, planSnap] = await Promise.all([
+        getDoc(doc(firestore, "users", userId)),
+        getDoc(doc(firestore, "users-plan", userId)),
+      ]);
+
+      const userDocData = userDocSnap.exists() ? userDocSnap.data() : {};
+      
+      // Try to get activity data from different possible collection structures
+      let flipkartData = {};
+      let meeshoData = {};
+      
+      try {
+        // Try different possible collection structures
+        const [flipkartSnap, meeshoSnap] = await Promise.all([
+          getDoc(doc(firestore, "flipkart-labels-cropped", userId)),
+          getDoc(doc(firestore, "meesho-labels-cropped", userId)),
+        ]);
+        
+        flipkartData = flipkartSnap.exists() ? flipkartSnap.data() : {};
+        meeshoData = meeshoSnap.exists() ? meeshoSnap.data() : {};
+      } catch (activityError) {
+        console.log("Activity data not found in separate collections:", activityError);
+        // Try to get from users-activity collection
+        try {
+          const [flipkartSnap, meeshoSnap] = await Promise.all([
+            getDoc(doc(firestore, "users-activity", userId)),
+            getDoc(doc(firestore, "users-activity", userId)),
+          ]);
+          
+          flipkartData = flipkartSnap.exists() ? flipkartSnap.data() : {};
+          meeshoData = meeshoSnap.exists() ? meeshoSnap.data() : {};
+        } catch (secondError) {
+          console.log("Activity data not found in users-activity collection:", secondError);
+          // Activity data might be stored within the user document or not available
+          flipkartData = userDocData.flipkartData || {};
+          meeshoData = userDocData.meeshoData || {};
+        }
+      }
+
+      setUserData({
+        userId,
+        email: userDocData.email || null,
+        phoneNumber: userDocData.phone || null,
+        companyName: userDocData.companyName || null,
+        gstNumber: userDocData.gstNumber || null,
+        createdAt: userDocData.createdAt || null,
+        lastLogin: userDocData.lastLogin || null,
+        plan: planSnap.exists() ? planSnap.data() : null,
+        activity: {
+          flipkart: flipkartData?.labelsProcessed?.totalCropped || 0,
+          meesho: meeshoData?.labelsProcessed?.totalCropped || 0,
+        },
+        flipkartData: flipkartData,
+        meeshoData: meeshoData,
+      });
+    } catch (err) {
+      console.error(err);
+      setError("Something went wrong while loading user details.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSearch = async () => {
     setError("");
     setUserData(null);
+    setSelectedUserId(null);
     setShowSkuDetails(false);
     setLoading(true);
 
@@ -52,25 +124,42 @@ const UserDashboard = () => {
       let userId = null;
       let userEmail = null;
       let userPhoneNumber = null;
+      let allMatchingUsers = [];
 
       if (searchType === "email") {
-        // Simple approach: get all users and filter client-side
+        // Search through users collection for email field with partial match using range queries
         const searchValue = searchTerm.trim().toLowerCase();
         const usersRef = collection(firestore, "users");
         
         try {
-          console.log("Fetching all users for email search:", searchValue);
-          const snapshot = await getDocs(usersRef);
-          console.log("Total users fetched:", snapshot.size);
+          console.log("Searching for email:", searchValue);
+          
+          // Create range query for partial email matching
+          // This will find emails that start with the search term
+          const q = query(
+            usersRef,
+            where("email", ">=", searchValue),
+            where("email", "<=", searchValue + "\uf8ff")
+          );
+          
+          const snapshot = await getDocs(q);
+          console.log("Users found:", snapshot.size);
           
           snapshot.forEach((doc) => {
             const userData = doc.data();
-            const profileDetails = userData?.profile?.details;
-            if (profileDetails?.email?.toLowerCase().includes(searchValue)) {
-              userId = doc.id;
-              userEmail = profileDetails.email;
-              userPhoneNumber = profileDetails.phone || null;
-              console.log("Found user:", { userId, userEmail, userPhoneNumber });
+            
+            if (userData?.email) {
+              const email = userData.email.toLowerCase();
+              // Double-check for partial match (in case of case sensitivity issues)
+              if (email.includes(searchValue)) {
+                const match = {
+                  userId: doc.id,
+                  email: userData.email,
+                  phoneNumber: userData.phone || null,
+                  companyName: userData.companyName || null,
+                };
+                allMatchingUsers.push(match);
+              }
             }
           });
         } catch (error) {
@@ -81,23 +170,38 @@ const UserDashboard = () => {
           return;
         }
       } else if (searchType === "phone") {
-        // Simple approach: get all users and filter client-side
+        // Search through users collection for phone field with partial match using range queries
         const phoneSearchValue = searchTerm.trim();
         const usersRef = collection(firestore, "users");
         
         try {
-          console.log("Fetching all users for phone search:", phoneSearchValue);
-          const snapshot = await getDocs(usersRef);
-          console.log("Total users fetched:", snapshot.size);
+          console.log("Searching for phone:", phoneSearchValue);
+          
+          // Create range query for partial phone matching
+          const q = query(
+            usersRef,
+            where("phone", ">=", phoneSearchValue),
+            where("phone", "<=", phoneSearchValue + "\uf8ff")
+          );
+          
+          const snapshot = await getDocs(q);
+          console.log("Users found:", snapshot.size);
           
           snapshot.forEach((doc) => {
             const userData = doc.data();
-            const profileDetails = userData?.profile?.details;
-            if (profileDetails?.phone?.includes(phoneSearchValue)) {
-              userId = doc.id;
-              userEmail = profileDetails.email;
-              userPhoneNumber = profileDetails.phone;
-              console.log("Found user by phone:", { userId, userEmail, userPhoneNumber });
+            
+            if (userData?.phone) {
+              const phone = userData.phone;
+              // Double-check for partial match
+              if (phone.includes(phoneSearchValue)) {
+                const match = {
+                  userId: doc.id,
+                  email: userData.email || null,
+                  phoneNumber: userData.phone,
+                  companyName: userData.companyName || null,
+                };
+                allMatchingUsers.push(match);
+              }
             }
           });
         } catch (error) {
@@ -107,41 +211,58 @@ const UserDashboard = () => {
           setLoading(false);
           return;
         }
+      } else if (searchType === "company") {
+        // Search through users collection for companyName field with partial match using range queries
+        const companySearchValue = searchTerm.trim().toLowerCase();
+        const usersRef = collection(firestore, "users");
+        
+        try {
+          console.log("Searching for company:", companySearchValue);
+          
+          // Create range query for partial company name matching
+          const q = query(
+            usersRef,
+            where("companyName", ">=", companySearchValue),
+            where("companyName", "<=", companySearchValue + "\uf8ff")
+          );
+          
+          const snapshot = await getDocs(q);
+          console.log("Users found:", snapshot.size);
+          
+          snapshot.forEach((doc) => {
+            const userData = doc.data();
+            
+            if (userData?.companyName) {
+              const companyName = userData.companyName.toLowerCase();
+              // Double-check for partial match
+              if (companyName.includes(companySearchValue)) {
+                const match = {
+                  userId: doc.id,
+                  email: userData.email || null,
+                  phoneNumber: userData.phone || null,
+                  companyName: userData.companyName,
+                };
+                allMatchingUsers.push(match);
+              }
+            }
+          });
+        } catch (error) {
+          console.error("Company search error:", error);
+          console.error("Error details:", error.code, error.message);
+          setError(`Error searching for company: ${error.message}. Please try again.`);
+          setLoading(false);
+          return;
+        }
       }
 
-      if (!userId) {
+      // Set all matches for display
+      setAllMatches(allMatchingUsers);
+
+      if (allMatchingUsers.length === 0) {
         setError("No users found matching your search criteria.");
         setLoading(false);
         return;
       }
-
-      // Use UID-based paths to fetch user data from Firestore
-      const [planSnap, flipkartSnap, meeshoSnap] =
-        await Promise.all([
-          getDoc(doc(firestore, "users-plan", userId)),
-          getDoc(doc(firestore, "users-activity", "flipkart-labels-cropped", userId)),
-          getDoc(doc(firestore, "users-activity", "meesho-labels-cropped", userId)),
-        ]);
-
-      setUserData({
-        userId,
-        email: userEmail,
-        phoneNumber: userPhoneNumber,
-        plan: planSnap.exists() ? planSnap.data() : null,
-        activity: {
-          flipkart: flipkartSnap.data()?.labelsProcessed?.totalCropped || 0,
-          meesho: meeshoSnap.data()?.labelsProcessed?.totalCropped || 0,
-        },
-        flipkartData: flipkartSnap.exists() ? flipkartSnap.data() : {},
-        meeshoData: meeshoSnap.exists() ? meeshoSnap.data() : {},
-      });
-
-      // Set allMatches for compatibility with existing UI
-      setAllMatches([{
-        userId,
-        email: userEmail,
-        phoneNumber: userPhoneNumber,
-      }]);
     } catch (err) {
       console.error(err);
       setError("Something went wrong.");
@@ -180,17 +301,30 @@ const UserDashboard = () => {
             label="Search By"
             onChange={(e) => setSearchType(e.target.value)}
           >
-            <MenuItem value="email">Email (Partial Match)</MenuItem>
+            <MenuItem value="email">Email</MenuItem>
             <MenuItem value="phone">Phone Number</MenuItem>
+            <MenuItem value="company">Company Name</MenuItem>
           </Select>
         </FormControl>
 
         <TextField
           fullWidth
-          label={searchType === "email" ? "Enter Email (Partial Match)" : "Enter Phone Number"}
+          label={
+            searchType === "email" 
+              ? "Enter Email" 
+              : searchType === "phone" 
+              ? "Enter Phone Number" 
+              : "Enter Company Name"
+          }
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder={searchType === "email" ? "e.g., john, @gmail.com" : "e.g., 9876543210"}
+          placeholder={
+            searchType === "email" 
+              ? "e.g., john, @gmail.com" 
+              : searchType === "phone" 
+              ? "e.g., 9876543210" 
+              : "e.g., My Company"
+          }
           sx={{ mb: 2 }}
         />
         <Button
@@ -209,7 +343,8 @@ const UserDashboard = () => {
         )}
       </Paper>
 
-      {userData && (
+      {/* Show search results list */}
+      {allMatches.length > 0 && !userData && (
         <Paper
           elevation={2}
           sx={{
@@ -220,11 +355,75 @@ const UserDashboard = () => {
           }}
         >
           <Typography variant="h6" gutterBottom>
-            🆔 User ID:{" "}
-            <Typography component="span" fontWeight="bold">
-              {userData.userId}
-            </Typography>
+            🔍 Search Results ({allMatches.length} found)
           </Typography>
+          
+          <Box display="flex" flexDirection="column" gap={1}>
+            {allMatches.map((match, index) => (
+              <Paper
+                key={match.userId}
+                elevation={1}
+                sx={{
+                  p: 2,
+                  cursor: "pointer",
+                  "&:hover": {
+                    bgcolor: "#f5f5f5",
+                  },
+                  border: selectedUserId === match.userId ? "2px solid #1976d2" : "1px solid #e0e0e0",
+                }}
+                onClick={() => handleUserSelect(match.userId)}
+              >
+                <Typography variant="subtitle1" fontWeight="bold">
+                  {match.email || "No email"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>User ID:</strong> {match.userId}
+                </Typography>
+                {match.phoneNumber && (
+                  <Typography variant="body2" color="text.secondary">
+                    <strong>Phone:</strong> {match.phoneNumber}
+                  </Typography>
+                )}
+                {match.companyName && (
+                  <Typography variant="body2" color="text.secondary">
+                    <strong>Company:</strong> {match.companyName}
+                  </Typography>
+                )}
+              </Paper>
+            ))}
+          </Box>
+        </Paper>
+      )}
+
+      {/* Show selected user details */}
+      {userData && (
+        <Paper
+          elevation={2}
+          sx={{
+            p: isMobile ? 2 : 3,
+            width: "100%",
+            maxWidth: 700,
+            bgcolor: "#fff",
+          }}
+        >
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">
+              🆔 User ID:{" "}
+              <Typography component="span" fontWeight="bold">
+                {userData.userId}
+              </Typography>
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => {
+                setUserData(null);
+                setSelectedUserId(null);
+              }}
+            >
+              ← Back to Results
+            </Button>
+          </Box>
 
           <Typography variant="body1" gutterBottom>
             📧 Email:{" "}
@@ -233,42 +432,42 @@ const UserDashboard = () => {
             </Typography>
           </Typography>
 
-          {/* Show multiple matches indicator */}
-          {allMatches.length > 1 && (
-            <Box mt={2} mb={2}>
-              <Typography variant="body2" color="info.main" gutterBottom>
-                ⚠️ Found {allMatches.length} matching users. Showing the first one.
+          {userData.companyName && (
+            <Typography variant="body1" gutterBottom>
+              🏢 Company:{" "}
+              <Typography component="span" fontWeight="bold">
+                {userData.companyName}
               </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => setShowAllMatches(!showAllMatches)}
-              >
-                {showAllMatches ? "Hide" : "Show"} All Matches
-              </Button>
-              
-              <Collapse in={showAllMatches}>
-                <Box mt={2} p={2} bgcolor="#f5f5f5" borderRadius={1}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    All Matching Users:
-                  </Typography>
-                  {allMatches.map((match, index) => (
-                    <Box key={index} mb={1} p={1} bgcolor="white" borderRadius={1}>
-                      <Typography variant="body2">
-                        <strong>User ID:</strong> {match.userId}
-                      </Typography>
-                      <Typography variant="body2">
-                        <strong>Email:</strong> {match.email || "Not available"}
-                      </Typography>
-                      <Typography variant="body2">
-                        <strong>Phone:</strong> {match.phoneNumber || "Not available"}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Collapse>
-            </Box>
+            </Typography>
           )}
+
+          {userData.gstNumber && (
+            <Typography variant="body1" gutterBottom>
+              🏛️ GST Number:{" "}
+              <Typography component="span" fontWeight="bold">
+                {userData.gstNumber}
+              </Typography>
+            </Typography>
+          )}
+
+          {userData.createdAt && (
+            <Typography variant="body1" gutterBottom>
+              📅 Created:{" "}
+              <Typography component="span" fontWeight="bold">
+                {new Date(userData.createdAt).toLocaleDateString()}
+              </Typography>
+            </Typography>
+          )}
+
+          {userData.lastLogin && (
+            <Typography variant="body1" gutterBottom>
+              🔄 Last Login:{" "}
+              <Typography component="span" fontWeight="bold">
+                {new Date(userData.lastLogin).toLocaleString()}
+              </Typography>
+            </Typography>
+          )}
+
 
           {userData.plan && (
             <>

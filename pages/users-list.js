@@ -30,188 +30,368 @@ import {
   CloudUpload as MigrateIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
+  Folder as FolderIcon,
+  ShoppingCart as OrdersIcon,
+  ShoppingCart as ShoppingCartIcon,
+  Payment as PaymentIcon,
+  Settings as SettingsIcon,
+  Analytics as AnalyticsIcon,
+  History as LogsIcon,
+  Notifications as NotificationsIcon,
+  Subscription as SubscriptionIcon,
+  FolderOpen as FilesIcon,
+  Chat as ChatIcon,
+  Assessment as ReportsIcon,
+  Receipt as InvoiceIcon,
+  Description as DocumentIcon,
 } from '@mui/icons-material';
-import { collection, getDocs, doc, getDoc, updateDoc, deleteField } from 'firebase/firestore';
-import { firestore } from '../hooks/config';
+import { ref, get, child, onValue, off } from 'firebase/database';
+import { doc, getDoc, updateDoc, setDoc, deleteField, collection, getDocs, deleteDoc } from 'firebase/firestore';
+import { database, firestore } from '../hooks/config';
 
 const UsersList = () => {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userData, setUserData] = useState(null);
+  const [userNodes, setUserNodes] = useState({});
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [nodeData, setNodeData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedUser, setExpandedUser] = useState(null);
   const [migrating, setMigrating] = useState(false);
   const [migrationStatus, setMigrationStatus] = useState({});
+  const [profileDetailsStatus, setProfileDetailsStatus] = useState({});
+  const [transferring, setTransferring] = useState(false);
 
-  // Fetch all user UIDs from the users collection
+  // Fetch all users from the users-plan node in Realtime Database
   const fetchUsers = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const usersCollection = collection(firestore, 'users');
-      const usersSnapshot = await getDocs(usersCollection);
+      console.log('=== FETCHING USERS FROM REALTIME DATABASE ===');
+      console.log('Fetching all users from users-plan node...');
       
+      const usersPlanRef = ref(database, 'users-plan');
+      console.log('Database reference created:', usersPlanRef.toString());
+      
+      const snapshot = await get(usersPlanRef);
+      console.log(`Snapshot exists: ${snapshot.exists()}`);
+      console.log(`Snapshot value:`, snapshot.val());
+      
+      if (!snapshot.exists()) {
+        console.log('No users found in users-plan node');
+        setUsers([]);
+        return;
+      }
+      
+      const usersData = snapshot.val();
       const usersList = [];
-      usersSnapshot.forEach((doc) => {
-        usersList.push({
-          id: doc.id,
-          ...doc.data()
-        });
+      let processedCount = 0;
+      
+      Object.keys(usersData).forEach((userId) => {
+        processedCount++;
+        console.log(`Processing user ${processedCount}:`);
+        console.log(`  - User ID: ${userId}`);
+        console.log(`  - User data:`, usersData[userId]);
+        
+        const userData = {
+          id: userId,
+          ...usersData[userId]
+        };
+        
+        usersList.push(userData);
+        console.log(`  - User data fields:`, Object.keys(usersData[userId]));
+        console.log(`  - Full user data:`, userData);
       });
-      debugger
+      
+      console.log(`=== FETCH SUMMARY ===`);
+      console.log(`Total users found: ${Object.keys(usersData).length}`);
+      console.log(`Processed users: ${processedCount}`);
+      console.log(`Users list length: ${usersList.length}`);
+      console.log(`User IDs loaded:`, usersList.map(u => u.id));
+      
       setUsers(usersList);
     } catch (err) {
-      console.error('Error fetching users:', err);
-      setError('Failed to fetch users. Please try again.');
+      console.error('Error fetching users from Realtime Database:', err);
+      console.error('Error details:', {
+        code: err.code,
+        message: err.message,
+        stack: err.stack
+      });
+      setError(`Failed to fetch users: ${err.message}. Please check console for details.`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch detailed data for a specific user
+  // Fetch detailed user plan data for a specific user
   const fetchUserData = async (userId) => {
     try {
       setLoading(true);
       setError(null);
       
-      const userDoc = doc(firestore, 'users', userId);
-      const userSnapshot = await getDoc(userDoc);
+      console.log(`Fetching user plan details for: ${userId}`);
       
-      if (userSnapshot.exists()) {
+      const userRef = ref(database, `users-plan/${userId}`);
+      const snapshot = await get(userRef);
+      
+      if (snapshot.exists()) {
+        const userPlanData = snapshot.val();
+        console.log(`User plan data for ${userId}:`, userPlanData);
+        
         setUserData({
-          id: userSnapshot.id,
-          ...userSnapshot.data()
+          id: userId,
+          ...userPlanData
         });
       } else {
-        setError('User data not found');
+        console.log(`No plan data found for user: ${userId}`);
+        setError('User plan data not found');
       }
     } catch (err) {
-      console.error('Error fetching user data:', err);
-      setError('Failed to fetch user data. Please try again.');
+      console.error('Error fetching user plan data:', err);
+      setError('Failed to fetch user plan data. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // This function is no longer needed for Realtime Database
+  // User plan details are fetched directly in fetchUserData
+
+  // This function is no longer needed for Realtime Database
+  // We're focusing on user plan details only
+
   // Handle user selection
   const handleUserClick = (user) => {
     setSelectedUser(user);
     setExpandedUser(expandedUser === user.id ? null : user.id);
+    setSelectedNode(null);
+    setNodeData(null);
     fetchUserData(user.id);
+    // Check profile details for this user
+    checkProfileDetails(user.id);
   };
+
+  // This function is no longer needed for Realtime Database
 
   // Handle refresh
   const handleRefresh = () => {
+    console.log('=== MANUAL REFRESH TRIGGERED ===');
     fetchUsers();
     setSelectedUser(null);
     setUserData(null);
+    setUserNodes({});
+    setSelectedNode(null);
+    setNodeData(null);
     setExpandedUser(null);
     setMigrationStatus({});
+    setProfileDetailsStatus({});
   };
 
-  // Migrate user profile data from profile/details to root level
-  const migrateUserData = async (userId) => {
+  // Force refresh with detailed logging
+  const forceRefresh = async () => {
+    console.log('=== FORCE REFRESH STARTED ===');
+    setLoading(true);
+    setError(null);
+    
     try {
-      setMigrating(true);
-      setError(null);
+      // Clear all state first
+      setUsers([]);
+      setSelectedUser(null);
+      setUserData(null);
+      setUserNodes({});
+      setSelectedNode(null);
+      setNodeData(null);
+      setExpandedUser(null);
+      setMigrationStatus({});
+      setProfileDetailsStatus({});
       
-      const userDoc = doc(firestore, 'users', userId);
-      const userSnapshot = await getDoc(userDoc);
+      // Wait a moment for state to clear
+      await new Promise(resolve => setTimeout(resolve, 100));
       
-      if (!userSnapshot.exists()) {
-        throw new Error('User document not found');
-      }
+      // Fetch users again
+      await fetchUsers();
       
-      const userData = userSnapshot.data();
-      const profileDetails = userData?.profile?.details;
+      console.log('=== FORCE REFRESH COMPLETED ===');
+    } catch (err) {
+      console.error('Force refresh error:', err);
+      setError('Force refresh failed. Please check console for details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Check if user has profile details in Firestore
+  const checkProfileDetails = async (userId) => {
+    try {
+      console.log(`Checking profile details for user: ${userId}`);
       
-      if (!profileDetails) {
-        setMigrationStatus(prev => ({
+      const profileDetailsRef = doc(firestore, 'users', userId, 'profile', 'details');
+      const profileSnapshot = await getDoc(profileDetailsRef);
+      
+      if (profileSnapshot.exists()) {
+        const profileData = profileSnapshot.data();
+        console.log(`Profile details found for ${userId}:`, profileData);
+        
+        setProfileDetailsStatus(prev => ({
           ...prev,
-          [userId]: { status: 'no-data', message: 'No profile details found to migrate' }
+          [userId]: {
+            exists: true,
+            data: profileData,
+            fields: Object.keys(profileData)
+          }
         }));
-        return;
-      }
-      
-      // Check if data is already migrated
-      const hasMigratedData = Object.keys(profileDetails).some(key => 
-        userData.hasOwnProperty(key) && userData[key] === profileDetails[key]
-      );
-      
-      if (hasMigratedData) {
-        setMigrationStatus(prev => ({
+        
+        return true;
+      } else {
+        console.log(`No profile details found for user: ${userId}`);
+        setProfileDetailsStatus(prev => ({
           ...prev,
-          [userId]: { status: 'already-migrated', message: 'Data appears to already be migrated' }
+          [userId]: {
+            exists: false,
+            data: null,
+            fields: []
+          }
         }));
-        return;
+        
+        return false;
       }
+    } catch (err) {
+      console.error(`Error checking profile details for ${userId}:`, err);
+      setProfileDetailsStatus(prev => ({
+        ...prev,
+        [userId]: {
+          exists: false,
+          data: null,
+          fields: [],
+          error: err.message
+        }
+      }));
       
-      // Update the user document with profile details at root level
-      await updateDoc(userDoc, {
-        ...profileDetails,
-        migratedAt: new Date().toISOString(),
-        migratedFrom: 'profile/details'
+      return false;
+    }
+  };
+
+  // Delete the entire profile subcollection
+  const deleteProfileSubcollection = async (userId) => {
+    try {
+      console.log(`Deleting profile subcollection for user: ${userId}`);
+      
+      // Get all documents in the profile subcollection
+      const profileCollectionRef = collection(firestore, 'users', userId, 'profile');
+      const profileSnapshot = await getDocs(profileCollectionRef);
+      
+      // Delete each document in the subcollection
+      const deletePromises = [];
+      profileSnapshot.forEach((docSnapshot) => {
+        deletePromises.push(deleteDoc(docSnapshot.ref));
       });
       
-      // Remove the profile/details subcollection (optional - you might want to keep it)
-      // await updateDoc(userDoc, {
-      //   profile: deleteField()
-      // });
+      // Wait for all deletions to complete
+      await Promise.all(deletePromises);
+      
+      console.log(`Successfully deleted profile subcollection for user: ${userId}`);
+      return true;
+    } catch (err) {
+      console.error(`Error deleting profile subcollection for ${userId}:`, err);
+      throw err;
+    }
+  };
+
+  // Transfer profile details from subcollection to root level
+  const transferProfileDetails = async (userId) => {
+    try {
+      setTransferring(true);
+      setError(null);
+      
+      console.log(`Starting profile details transfer for user: ${userId}`);
+      
+      // Get the profile details
+      const profileDetailsRef = doc(firestore, 'users', userId, 'profile', 'details');
+      const profileSnapshot = await getDoc(profileDetailsRef);
+      
+      if (!profileSnapshot.exists()) {
+        throw new Error('Profile details not found');
+      }
+      
+      const profileData = profileSnapshot.data();
+      console.log(`Profile data to transfer:`, profileData);
+      
+      // Get the main user document
+      const userRef = doc(firestore, 'users', userId);
+      const userSnapshot = await getDoc(userRef);
+      
+      if (!userSnapshot.exists()) {
+        console.log(`User document ${userId} not found in Firestore, creating it with profile details...`);
+        // Create the user document with profile details
+        await setDoc(userRef, {
+          ...profileData,
+          createdAt: new Date().toISOString()
+        });
+      } else {
+        // Update the existing user document with profile details at root level
+        await updateDoc(userRef, {
+          ...profileData
+        });
+      }
+      
+      // Delete the entire profile subcollection
+      await deleteProfileSubcollection(userId);
+      
+      console.log(`Successfully transferred profile details for user: ${userId}`);
       
       setMigrationStatus(prev => ({
         ...prev,
-        [userId]: { status: 'success', message: 'Data migrated successfully' }
+        [userId]: {
+          status: 'success',
+          message: 'Profile details transferred and subcollection deleted successfully'
+        }
+      }));
+      
+      // Update profile details status
+      setProfileDetailsStatus(prev => ({
+        ...prev,
+        [userId]: {
+          exists: false,
+          data: null,
+          fields: [],
+          transferred: true
+        }
       }));
       
       // Refresh user data to show updated structure
       await fetchUserData(userId);
       
     } catch (err) {
-      console.error('Error migrating user data:', err);
+      console.error(`Error transferring profile details for ${userId}:`, err);
       setMigrationStatus(prev => ({
         ...prev,
-        [userId]: { status: 'error', message: err.message }
+        [userId]: {
+          status: 'error',
+          message: err.message
+        }
       }));
     } finally {
-      setMigrating(false);
+      setTransferring(false);
     }
   };
 
-  // Migrate all users at once
-  const migrateAllUsers = async () => {
-    setMigrating(true);
+  // Check profile details for all users
+  const checkAllProfileDetails = async () => {
+    setLoading(true);
     setError(null);
     
-    const usersWithProfileDetails = users.filter(user => 
-      user.profile?.details && Object.keys(user.profile.details).length > 0
-    );
+    console.log('Checking profile details for all users...');
     
-    let successCount = 0;
-    let errorCount = 0;
-    
-    for (const user of usersWithProfileDetails) {
-      try {
-        await migrateUserData(user.id);
-        successCount++;
-      } catch (err) {
-        console.error(`Error migrating user ${user.id}:`, err);
-        errorCount++;
-      }
+    for (const user of users) {
+      await checkProfileDetails(user.id);
+      // Small delay to avoid overwhelming the database
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
     
-    setMigrationStatus(prev => ({
-      ...prev,
-      'all': { 
-        status: 'completed', 
-        message: `Migration completed: ${successCount} successful, ${errorCount} errors` 
-      }
-    }));
-    
-    setMigrating(false);
-    // Refresh the users list
-    await fetchUsers();
+    setLoading(false);
   };
 
   // Format data for display
@@ -230,14 +410,29 @@ const UsersList = () => {
     return 'string';
   };
 
-  // Check if user has profile details to migrate
-  const hasProfileDetails = (user) => {
-    return user?.profile?.details && Object.keys(user.profile.details).length > 0;
+  // These functions are not needed for Realtime Database
+
+  // This function is not needed for Realtime Database
+
+  // Debug functions for Realtime Database
+  const logUsersPlanData = () => {
+    console.log('=== USERS-PLAN DATA DEBUG ===');
+    console.log(`Total users found: ${users.length}`);
+    users.forEach((user, index) => {
+      console.log(`User ${index + 1}: ${user.id}`);
+      console.log('  Plan fields:', Object.keys(user).filter(key => key !== 'id'));
+      console.log('  Full plan data:', user);
+    });
+    console.log('=== END USERS-PLAN DEBUG ===');
   };
 
-  // Get migration status for a user
-  const getMigrationStatus = (userId) => {
-    return migrationStatus[userId] || { status: 'pending', message: '' };
+  const checkRealtimeDatabaseConfig = () => {
+    console.log('=== REALTIME DATABASE CONFIGURATION CHECK ===');
+    console.log('Database instance:', database);
+    console.log('Database URL:', database.app.options.databaseURL);
+    console.log('Database app name:', database.app.name);
+    console.log('Database project ID:', database.app.options.projectId);
+    console.log('=== END REALTIME DATABASE CONFIG CHECK ===');
   };
 
   useEffect(() => {
@@ -260,15 +455,46 @@ const UsersList = () => {
           Users Management
         </Typography>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Button
-            variant="contained"
-            startIcon={<MigrateIcon />}
-            onClick={migrateAllUsers}
-            disabled={migrating || users.filter(hasProfileDetails).length === 0}
-            color="secondary"
-          >
-            {migrating ? 'Migrating All...' : 'Migrate All'}
-          </Button>
+          <Tooltip title="Check profile details for all users in Firestore">
+            <Button
+              variant="contained"
+              onClick={checkAllProfileDetails}
+              disabled={users.length === 0 || loading}
+              color="secondary"
+              startIcon={<PersonIcon />}
+            >
+              Check Profile Details
+            </Button>
+          </Tooltip>
+          <Tooltip title="Debug: Log users-plan data to console">
+            <Button
+              variant="outlined"
+              onClick={logUsersPlanData}
+              disabled={users.length === 0}
+              color="info"
+            >
+              Debug Users
+            </Button>
+          </Tooltip>
+          <Tooltip title="Check Realtime Database configuration">
+            <Button
+              variant="outlined"
+              onClick={checkRealtimeDatabaseConfig}
+              color="info"
+            >
+              Check DB Config
+            </Button>
+          </Tooltip>
+          <Tooltip title="Force refresh with detailed logging">
+            <Button
+              variant="outlined"
+              onClick={forceRefresh}
+              disabled={loading}
+              color="primary"
+            >
+              Force Refresh
+            </Button>
+          </Tooltip>
           <Tooltip title="Refresh users list">
             <IconButton onClick={handleRefresh} color="primary">
               <RefreshIcon />
@@ -283,7 +509,7 @@ const UsersList = () => {
         </Alert>
       )}
 
-      {/* Migration Summary */}
+      {/* Users Summary */}
       {users.length > 0 && (
         <Alert 
           severity="info" 
@@ -291,7 +517,12 @@ const UsersList = () => {
           icon={<InfoIcon />}
         >
           <Typography variant="body2">
-            <strong>Migration Status:</strong> {users.filter(hasProfileDetails).length} users need migration, {users.filter(user => !hasProfileDetails(user)).length} already migrated
+            <strong>Users Plan Summary:</strong> Found {users.length} users with plan data from Realtime Database.
+            {Object.keys(profileDetailsStatus).length > 0 && (
+              <span> 
+                {Object.values(profileDetailsStatus).filter(status => status.exists).length} users have profile details in Firestore.
+              </span>
+            )}
           </Typography>
         </Alert>
       )}
@@ -302,19 +533,19 @@ const UsersList = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                All Users ({users.length})
+                Users Plan Data ({users.length} users found)
               </Typography>
               <Divider sx={{ mb: 2 }} />
               
               {users.length === 0 ? (
                 <Typography color="text.secondary" align="center" py={4}>
-                  No users found
+                  No users found in users-plan node
                 </Typography>
               ) : (
                 <List>
                   {users.map((user, index) => {
-                    const userHasProfileDetails = hasProfileDetails(user);
-                    const migrationStatus = getMigrationStatus(user.id);
+                    const profileStatus = profileDetailsStatus[user.id];
+                    const userMigrationStatus = migrationStatus[user.id];
                     
                     return (
                       <React.Fragment key={user.id}>
@@ -349,9 +580,25 @@ const UsersList = () => {
                                         color="primary"
                                       />
                                     )}
-                                    {!userHasProfileDetails && (
+                                    {user.planName && (
                                       <Chip
-                                        label="Migrated"
+                                        label={user.planName}
+                                        size="small"
+                                        color="secondary"
+                                        icon={<SubscriptionIcon />}
+                                      />
+                                    )}
+                                    {profileStatus?.exists && (
+                                      <Chip
+                                        label={`${profileStatus.fields.length} profile fields`}
+                                        size="small"
+                                        color="warning"
+                                        icon={<PersonIcon />}
+                                      />
+                                    )}
+                                    {profileStatus?.transferred && (
+                                      <Chip
+                                        label="Transferred"
                                         size="small"
                                         color="success"
                                         icon={<CheckCircleIcon />}
@@ -361,44 +608,41 @@ const UsersList = () => {
                                 }
                                 secondary={
                                   <Typography variant="body2" color="text.secondary">
-                                    Click to view details
+                                    Click to view plan details
                                   </Typography>
                                 }
                               />
                             </ListItemButton>
                             
-                            {/* Migration Button and Status */}
-                            <Box sx={{ px: 2, pb: 1 }}>
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={<MigrateIcon />}
-                                  disabled={!userHasProfileDetails || migrating}
-                                  onClick={() => migrateUserData(user.id)}
-                                  color={
-                                    migrationStatus.status === 'success' ? 'success' :
-                                    migrationStatus.status === 'error' ? 'error' :
-                                    migrationStatus.status === 'already-migrated' ? 'warning' : 'primary'
-                                  }
-                                >
-                                  {migrating && migrationStatus.status === 'pending' ? 'Migrating...' : 'Migrate'}
-                                </Button>
-                                
-                                {migrationStatus.message && (
-                                  <Typography 
-                                    variant="caption" 
-                                    color={
-                                      migrationStatus.status === 'success' ? 'success.main' :
-                                      migrationStatus.status === 'error' ? 'error.main' :
-                                      migrationStatus.status === 'already-migrated' ? 'warning.main' : 'text.secondary'
-                                    }
+                            {/* Profile Details Transfer Button */}
+                            {profileStatus?.exists && (
+                              <Box sx={{ px: 2, pb: 1 }}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    startIcon={<MigrateIcon />}
+                                    disabled={transferring}
+                                    onClick={() => transferProfileDetails(user.id)}
+                                    color="warning"
                                   >
-                                    {migrationStatus.message}
-                                  </Typography>
-                                )}
-                              </Stack>
-                            </Box>
+                                    {transferring ? 'Transferring...' : 'Transfer Profile Data'}
+                                  </Button>
+                                  
+                                  {userMigrationStatus?.message && (
+                                    <Typography 
+                                      variant="caption" 
+                                      color={
+                                        userMigrationStatus.status === 'success' ? 'success.main' :
+                                        userMigrationStatus.status === 'error' ? 'error.main' : 'text.secondary'
+                                      }
+                                    >
+                                      {userMigrationStatus.message}
+                                    </Typography>
+                                  )}
+                                </Stack>
+                              </Box>
+                            )}
                           </Box>
                         </ListItem>
                         {index < users.length - 1 && <Divider />}
@@ -411,18 +655,18 @@ const UsersList = () => {
           </Card>
         </Grid>
 
-        {/* User Details */}
+        {/* User Details and Nodes */}
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                User Details
+                User Details & Nodes
               </Typography>
               <Divider sx={{ mb: 2 }} />
               
               {!selectedUser ? (
                 <Typography color="text.secondary" align="center" py={4}>
-                  Select a user to view details
+                  Select a user to view details and nodes
                 </Typography>
               ) : (
                 <Box>
@@ -438,6 +682,40 @@ const UsersList = () => {
                         User ID: {userData.id}
                       </Typography>
                       
+                      {/* Profile Details Status */}
+                      {profileDetailsStatus[selectedUser.id] && (
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="h6" sx={{ mb: 1 }}>
+                            Profile Details Status
+                          </Typography>
+                          {profileDetailsStatus[selectedUser.id].exists ? (
+                            <Alert severity="warning" sx={{ mb: 1 }}>
+                              <Typography variant="body2">
+                                <strong>Profile details found in Firestore:</strong> {profileDetailsStatus[selectedUser.id].fields.length} fields available for transfer.
+                                <br />
+                                <strong>Fields:</strong> {profileDetailsStatus[selectedUser.id].fields.join(', ')}
+                              </Typography>
+                            </Alert>
+                          ) : profileDetailsStatus[selectedUser.id].transferred ? (
+                            <Alert severity="success" sx={{ mb: 1 }}>
+                              <Typography variant="body2">
+                                <strong>Profile details have been transferred</strong> to the root level of the user document.
+                              </Typography>
+                            </Alert>
+                          ) : (
+                            <Alert severity="info" sx={{ mb: 1 }}>
+                              <Typography variant="body2">
+                                No profile details found in Firestore for this user.
+                              </Typography>
+                            </Alert>
+                          )}
+                        </Box>
+                      )}
+
+                      {/* User Data */}
+                      <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
+                        User Plan Data
+                      </Typography>
                       <List dense>
                         {Object.entries(userData)
                           .filter(([key]) => key !== 'id')
@@ -493,6 +771,125 @@ const UsersList = () => {
                             </Accordion>
                           ))}
                       </List>
+
+                      {/* User Nodes */}
+                      {userNodes[selectedUser.id] && (
+                        <Box sx={{ mt: 3 }}>
+                          <Typography variant="h6" sx={{ mb: 1 }}>
+                            User Nodes/Collections ({Object.keys(userNodes[selectedUser.id]).length} found)
+                          </Typography>
+                          {Object.keys(userNodes[selectedUser.id]).length === 0 ? (
+                            <Typography color="text.secondary" variant="body2">
+                              No nodes found for this user. Check console for discovery logs.
+                            </Typography>
+                          ) : (
+                            <List dense>
+                              {Object.entries(userNodes[selectedUser.id]).map(([nodeName, nodeItems]) => (
+                                <Accordion key={nodeName} sx={{ mb: 1 }}>
+                                  <AccordionSummary
+                                    expandIcon={<ExpandMoreIcon />}
+                                    sx={{
+                                      backgroundColor: 'primary.light',
+                                      '&:hover': {
+                                        backgroundColor: 'primary.main',
+                                        color: 'white',
+                                      },
+                                    }}
+                                  >
+                                    <Box display="flex" alignItems="center" gap={1}>
+                                      {getNodeIcon(nodeName)}
+                                      <Typography variant="subtitle2" fontWeight="medium">
+                                        {nodeName}
+                                      </Typography>
+                                      <Chip
+                                        label={`${nodeItems.length} items`}
+                                        size="small"
+                                        color="secondary"
+                                      />
+                                    </Box>
+                                  </AccordionSummary>
+                                  <AccordionDetails>
+                                    <List dense>
+                                      {nodeItems.map((item, index) => (
+                                        <ListItem key={item.id} disablePadding>
+                                          <ListItemButton
+                                            onClick={() => handleNodeClick(selectedUser.id, nodeName, item.id)}
+                                            selected={selectedNode?.userId === selectedUser.id && 
+                                                     selectedNode?.nodeName === nodeName && 
+                                                     selectedNode?.nodeId === item.id}
+                                            sx={{
+                                              borderRadius: 1,
+                                              mb: 0.5,
+                                              '&.Mui-selected': {
+                                                backgroundColor: 'secondary.light',
+                                                '&:hover': {
+                                                  backgroundColor: 'secondary.main',
+                                                },
+                                              },
+                                            }}
+                                          >
+                                            <ListItemText
+                                              primary={
+                                                <Box display="flex" alignItems="center" gap={1}>
+                                                  <Typography variant="body2" fontWeight="medium">
+                                                    {item.id}
+                                                  </Typography>
+                                                  {Object.keys(item).filter(key => key !== 'id').length > 0 && (
+                                                    <Chip
+                                                      label={`${Object.keys(item).filter(key => key !== 'id').length} fields`}
+                                                      size="small"
+                                                      variant="outlined"
+                                                    />
+                                                  )}
+                                                </Box>
+                                              }
+                                              secondary={
+                                                <Typography variant="caption" color="text.secondary">
+                                                  Click to view details
+                                                </Typography>
+                                              }
+                                            />
+                                          </ListItemButton>
+                                        </ListItem>
+                                      ))}
+                                    </List>
+                                  </AccordionDetails>
+                                </Accordion>
+                              ))}
+                            </List>
+                          )}
+                        </Box>
+                      )}
+
+                      {/* Node Data */}
+                      {selectedNode && nodeData && (
+                        <Box sx={{ mt: 3 }}>
+                          <Typography variant="h6" sx={{ mb: 1 }}>
+                            Node Data: {selectedNode.nodeName}/{selectedNode.nodeId}
+                          </Typography>
+                          <Paper
+                            sx={{
+                              p: 2,
+                              backgroundColor: 'secondary.light',
+                              maxHeight: 300,
+                              overflow: 'auto',
+                            }}
+                          >
+                            <Typography
+                              variant="body2"
+                              component="pre"
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.875rem',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                              }}
+                            >
+                              {formatData(nodeData)}
+                            </Typography>
+                          </Paper>
+                        </Box>
+                      )}
                     </Box>
                   )}
                 </Box>
