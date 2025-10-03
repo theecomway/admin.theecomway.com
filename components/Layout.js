@@ -13,6 +13,7 @@ import {
 import MenuIcon from '@mui/icons-material/Menu';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import { useAuth } from '../hooks/useAuth';
 
 const drawerWidth = 280;
 
@@ -20,11 +21,23 @@ const Layout = ({ children }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, loading } = useAuth();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
+  // Show loading while checking authentication
+  if (loading) {
+    return <>{children}</>;
+  }
+
+  // If user is not authenticated, render children without layout (for sign-in page, home page, etc.)
+  if (!user) {
+    return <>{children}</>;
+  }
+
+  // If user is authenticated, render the full layout with sidebar and header
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />

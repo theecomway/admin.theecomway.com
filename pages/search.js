@@ -35,6 +35,7 @@ import React, { useState } from "react";
 import { collection, query, where, getDocs, doc, getDoc, orderBy, limit, startAt, endAt, or } from "firebase/firestore";
 
 import { firestore } from "../hooks/config";
+import ProtectedRoute from "../components/ProtectedRoute";
 
 const createWhatsAppLink = (phoneNumber, message) => {
   const encodedMessage = encodeURIComponent(message);
@@ -290,15 +291,16 @@ const UserDashboard = () => {
   };
 
   return (
-    <Box
-      display="flex"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      minHeight="100vh"
-      bgcolor="#f4f6f8"
-      px={2}
-    >
+    <ProtectedRoute>
+      <Box
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        minHeight="100vh"
+        bgcolor="#f4f6f8"
+        px={2}
+      >
       <Paper
         elevation={1}
         sx={{
@@ -934,7 +936,8 @@ const UserDashboard = () => {
           </Paper>
         </Fade>
       )}
-    </Box>
+      </Box>
+    </ProtectedRoute>
   );
 };
 

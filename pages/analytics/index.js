@@ -15,6 +15,7 @@ import EventSummary from "./eventSummary";
 import FilteredEvents from "./FilteredEvents";
 import UserLogs from "./UserLogs";
 import { database } from "../../hooks/config";
+import ProtectedRoute from "../../components/ProtectedRoute";
 
 const now = new Date();
 const dateKey = now
@@ -62,7 +63,8 @@ const LogViewer = () => {
   const totalUsers = totalGuestUsers + totalLoggedUsers;
 
   return (
-    <Box sx={{ p: 4, maxWidth: "1000px", mx: "auto" }}>
+    <ProtectedRoute>
+      <Box sx={{ p: 4, maxWidth: "1000px", mx: "auto" }}>
       <Typography variant="h4" fontWeight={600} mb={3}>
         Total Users: {totalUsers} | Guest Users: {totalGuestUsers} | Logged In
         Users: {totalLoggedUsers}
@@ -97,7 +99,8 @@ const LogViewer = () => {
       {tabIndex === 1 && <UserLogs data={{ [selectedDate]: guestLogs }} />}
       {tabIndex === 2 && <UserLogs data={{ [selectedDate]: userLogs }} />}
       <EventSummary logs={{ [selectedDate]: filteredLogs }} />
-    </Box>
+      </Box>
+    </ProtectedRoute>
   );
 };
 

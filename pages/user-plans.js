@@ -18,6 +18,7 @@ import { onValue, ref, remove } from "firebase/database";
 
 import { database } from "../hooks/config";
 import dayjs from "dayjs";
+import ProtectedRoute from "../components/ProtectedRoute";
 
 const USER_PLANS_PATH = "users-plan";
 
@@ -145,7 +146,8 @@ const PlansDashboard = () => {
   const filtered = filterPlans(tabIndex);
 
   return (
-    <Box sx={{ maxWidth: "1000px", margin: "auto", p: 2 }}>
+    <ProtectedRoute>
+      <Box sx={{ maxWidth: "1000px", margin: "auto", p: 2 }}>
       <Typography variant="h5" mb={2}>
         User Plans
       </Typography>
@@ -166,7 +168,8 @@ const PlansDashboard = () => {
       </Tabs>
 
       {renderTable(filtered)}
-    </Box>
+      </Box>
+    </ProtectedRoute>
   );
 };
 

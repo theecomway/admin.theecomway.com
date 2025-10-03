@@ -5,10 +5,12 @@ import { auth } from "./config";
 
 export function useAuth() {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -53,6 +55,7 @@ export function useAuth() {
 
   return {
     user,
+    loading,
     signInWithGoogle,
     signInWithEmail,
     signUpWithEmail,

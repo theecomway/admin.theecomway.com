@@ -48,6 +48,7 @@ import {
 import { ref, get, child, onValue, off } from 'firebase/database';
 import { doc, getDoc, updateDoc, setDoc, deleteField, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { database, firestore } from '../hooks/config';
+import ProtectedRoute from '../components/ProtectedRoute';
 
 const UsersList = () => {
   const [users, setUsers] = useState([]);
@@ -448,7 +449,8 @@ const UsersList = () => {
   }
 
   return (
-    <Box>
+    <ProtectedRoute>
+      <Box>
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" component="h1" gutterBottom>
@@ -898,7 +900,8 @@ const UsersList = () => {
           </Card>
         </Grid>
       </Grid>
-    </Box>
+      </Box>
+    </ProtectedRoute>
   );
 };
 
