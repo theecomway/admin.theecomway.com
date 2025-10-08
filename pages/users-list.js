@@ -332,7 +332,6 @@ const UsersList = () => {
         // Create the user document with profile details
         await setDoc(userRef, {
           ...profileData,
-          createdAt: new Date().toISOString()
         });
       } else {
         // Update the existing user document with profile details at root level
@@ -397,6 +396,106 @@ const UsersList = () => {
     }
     
     setLoading(false);
+  };
+
+  // Automated transfer process with 60-second delay between transfers
+  const autoTransferProfileData = async () => {
+    setLoading(true);
+    setError(null);
+    setTransferring(true);
+    
+    console.log('Starting automated profile data transfer process...');
+    
+    let transferredCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+    
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+      console.log(`\n=== Processing user ${i + 1}/${users.length}: ${user.id} ===`);
+      
+      // Check if user has profile details
+      const hasProfileDetails = await checkProfileDetails(user.id);
+      
+      if (hasProfileDetails) {
+        console.log(`Profile details found for ${user.id}, starting transfer...`);
+        
+        try {
+          // Transfer the profile data
+          await transferProfileDetails(user.id);
+          transferredCount++;
+          console.log(`✓ Successfully transferred data for ${user.id}`);
+          
+          // Show success message
+          setMigrationStatus(prev => ({
+            ...prev,
+            [user.id]: {
+              status: 'success',
+              message: `Transferred successfully (${transferredCount}/${users.length})`,
+              timestamp: new Date().toISOString()
+            }
+          }));
+          
+          // Wait 60 seconds before processing next user (if not the last one)
+          if (i < users.length - 1) {
+            console.log(`Waiting 60 seconds before processing next user...`);
+            for (let countdown = 3; countdown > 0; countdown--) {
+              setMigrationStatus(prev => ({
+                ...prev,
+                [user.id]: {
+                  ...prev[user.id],
+                  message: `Transferred successfully. Next user in ${countdown}s...`
+                }
+              }));
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+          
+        } catch (err) {
+          errorCount++;
+          console.error(`✗ Error transferring data for ${user.id}:`, err);
+          setMigrationStatus(prev => ({
+            ...prev,
+            [user.id]: {
+              status: 'error',
+              message: `Transfer failed: ${err.message}`,
+              timestamp: new Date().toISOString()
+            }
+          }));
+          
+          // Still wait before next user even if error occurred
+          if (i < users.length - 1) {
+            console.log(`Waiting 60 seconds before processing next user after error...`);
+            await new Promise(resolve => setTimeout(resolve, 60000));
+          }
+        }
+      } else {
+        skippedCount++;
+        console.log(`✓ No profile details found for ${user.id}, skipping...`);
+        setMigrationStatus(prev => ({
+          ...prev,
+          [user.id]: {
+            status: 'skipped',
+            message: 'No profile details found',
+            timestamp: new Date().toISOString()
+          }
+        }));
+        
+        // No delay for skipped users, move to next immediately
+      }
+    }
+    
+    console.log('\n=== AUTOMATED TRANSFER COMPLETE ===');
+    console.log(`Transferred: ${transferredCount}`);
+    console.log(`Skipped: ${skippedCount}`);
+    console.log(`Errors: ${errorCount}`);
+    console.log(`Total processed: ${users.length}`);
+    
+    setLoading(false);
+    setTransferring(false);
+    
+    // Show completion alert
+    setError(`Automated transfer complete! Transferred: ${transferredCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
   };
 
   // Get users that need data transfer
@@ -485,11 +584,22 @@ const UsersList = () => {
           Users Management
         </Typography>
         <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title="Automatically transfer profile data for all users with 60s delay between transfers">
+            <Button
+              variant="contained"
+              onClick={autoTransferProfileData}
+              disabled={users.length === 0 || loading || transferring}
+              color="warning"
+              startIcon={<MigrateIcon />}
+            >
+              {transferring ? 'Auto Transferring...' : 'Auto Transfer All'}
+            </Button>
+          </Tooltip>
           <Tooltip title="Check profile details for all users in Firestore">
             <Button
               variant="contained"
               onClick={checkAllProfileDetails}
-              disabled={users.length === 0 || loading}
+              disabled={users.length === 0 || loading || transferring}
               color="secondary"
               startIcon={<PersonIcon />}
             >
@@ -534,8 +644,20 @@ const UsersList = () => {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert 
+          severity={error.includes('complete') ? 'success' : 'error'} 
+          sx={{ mb: 2 }}
+          onClose={() => setError(null)}
+        >
           {error}
+        </Alert>
+      )}
+
+      {transferring && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            <strong>Automated Transfer in Progress...</strong> Please do not close this page. The process will automatically check each user and transfer profile data with a 60-second delay between transfers.
+          </Typography>
         </Alert>
       )}
 
@@ -646,6 +768,27 @@ const UsersList = () => {
                                             color="warning"
                                             icon={<PersonIcon />}
                                           />
+                                          {userMigrationStatus && (
+                                            <Chip
+                                              label={
+                                                userMigrationStatus.status === 'success' ? 'Transferred' :
+                                                userMigrationStatus.status === 'error' ? 'Error' :
+                                                userMigrationStatus.status === 'skipped' ? 'Skipped' :
+                                                'Processing'
+                                              }
+                                              size="small"
+                                              color={
+                                                userMigrationStatus.status === 'success' ? 'success' :
+                                                userMigrationStatus.status === 'error' ? 'error' :
+                                                'default'
+                                              }
+                                              icon={
+                                                userMigrationStatus.status === 'success' ? <CheckCircleIcon /> :
+                                                userMigrationStatus.status === 'error' ? <WarningIcon /> :
+                                                null
+                                              }
+                                            />
+                                          )}
                                         </Box>
                                       }
                                       secondary={
@@ -658,7 +801,7 @@ const UsersList = () => {
                                   
                                   {/* Profile Details Transfer Button */}
                                   <Box sx={{ px: 2, pb: 1 }}>
-                                    <Stack direction="row" spacing={1} alignItems="center">
+                                    <Stack direction="column" spacing={1}>
                                       <Button
                                         size="small"
                                         variant="contained"
@@ -666,20 +809,24 @@ const UsersList = () => {
                                         disabled={transferring}
                                         onClick={() => transferProfileDetails(user.id)}
                                         color="warning"
+                                        fullWidth
                                       >
-                                        {transferring ? 'Transferring...' : 'Transfer Profile Data'}
+                                        {transferring ? 'Processing...' : 'Transfer Profile Data'}
                                       </Button>
                                       
                                       {userMigrationStatus?.message && (
-                                        <Typography 
-                                          variant="caption" 
-                                          color={
-                                            userMigrationStatus.status === 'success' ? 'success.main' :
-                                            userMigrationStatus.status === 'error' ? 'error.main' : 'text.secondary'
+                                        <Alert 
+                                          severity={
+                                            userMigrationStatus.status === 'success' ? 'success' :
+                                            userMigrationStatus.status === 'error' ? 'error' :
+                                            userMigrationStatus.status === 'skipped' ? 'info' : 'info'
                                           }
+                                          sx={{ py: 0.5 }}
                                         >
-                                          {userMigrationStatus.message}
-                                        </Typography>
+                                          <Typography variant="caption">
+                                            {userMigrationStatus.message}
+                                          </Typography>
+                                        </Alert>
                                       )}
                                     </Stack>
                                   </Box>
