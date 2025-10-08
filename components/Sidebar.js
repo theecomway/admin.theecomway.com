@@ -27,6 +27,8 @@ import {
   Settings,
   ExpandLess,
   ExpandMore,
+  EventNote,
+  Timeline,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import { useState } from 'react';
@@ -37,6 +39,7 @@ const Sidebar = ({ onClose }) => {
   const [openSections, setOpenSections] = useState({
     amazon: false,
     analytics: false,
+    sessionanalytics: false,
     flipkart: false,
     files: false,
   });
@@ -67,6 +70,15 @@ const Sidebar = ({ onClose }) => {
         { title: 'Event Summary', path: '/analytics/eventSummary' },
         { title: 'Filtered Events', path: '/analytics/FilteredEvents' },
         { title: 'User Logs', path: '/analytics/UserLogs' },
+      ],
+    },
+    {
+      title: 'Session Analytics',
+      icon: <Timeline />,
+      path: '/session-analytics',
+      children: [
+        { title: 'Analytics Dashboard', path: '/analytics-dashboard' },
+        { title: 'Sessions', path: '/sessions' },
       ],
     },
     {
