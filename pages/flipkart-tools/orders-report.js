@@ -194,6 +194,12 @@ const OrdersPaymentDashboard = () => {
 
       // Create payment lookup map
       const paymentMap = {};
+      
+      // Debug: Log payment sheet columns on first payment entry
+      if (payments.length > 0) {
+        console.log("Payment sheet columns:", Object.keys(payments[0]));
+      }
+      
       payments.forEach((payment) => {
         // Try multiple possible Order ID column names
         const orderId = normalizeOrderId(
@@ -207,8 +213,10 @@ const OrdersPaymentDashboard = () => {
         if (!orderId) return;
 
         // Get settlement value from the exact column name in payment sheet
-        // The column is named "Bank Settlement Value (Rs.) = SUM(J:R)"
+        // The column is named "Bank Settlement Value (Rs.) \r\n= SUM(J:R)" with line break
         const settlement = parseFloat(
+          payment["Bank Settlement Value (Rs.) \r\n= SUM(J:R)"] ||
+          payment["Bank Settlement Value (Rs.)_= SUM(J:R)"] ||
           payment["Bank Settlement Value (Rs.) = SUM(J:R)"] ||
           payment["Bank Settlement Value (Rs.)"] ||
           payment["Settlement Amount"] ||
@@ -224,6 +232,8 @@ const OrdersPaymentDashboard = () => {
         }
         paymentMap[orderId] += settlement;
       });
+      
+      console.log(`Total unique orders with settlements: ${Object.keys(paymentMap).length}`);
 
       // Consolidate data
       const consolidated = orders.map((order) => {
