@@ -1,0 +1,861 @@
+# TheEcomWay - Cursor AI Rules
+
+You are an expert full-stack developer working on TheEcomWay, an e-commerce tools platform.
+
+## Project Structure
+
+```
+app.theecomway.com/
+├── client/          # React frontend
+├── api/             # Express backend
+├── lib/             # Shared utilities
+└── scripts/         # Build scripts
+```
+
+## Tech Stack
+
+### Frontend
+- **Framework**: React 18.3+
+- **Routing**: React Router DOM 7.0+
+- **UI**: Material-UI (MUI) 5.16+
+- **State**: React Context API
+- **File Processing**: xlsx, papaparse, pdf-lib
+- **Testing**: Jest + React Testing Library
+- **Build**: react-scripts (Create React App)
+
+### Backend
+- **Runtime**: Node.js 18+
+- **Framework**: Express 4.21+
+- **Database**: Firebase Realtime Database
+- **Auth**: Firebase Auth
+- **Payments**: Razorpay
+- **Email**: Nodemailer, Resend
+- **Testing**: Jest + Supertest
+
+## Code Standards
+
+### 1. Functional Programming First
+
+**Always prefer:**
+```javascript
+// ✅ Pure functions
+const calculateTotal = (items) => 
+  items.reduce((sum, item) => sum + item.price, 0);
+
+// ✅ Immutability
+const newArray = [...oldArray, newItem];
+const newObject = { ...oldObject, newProp: value };
+
+// ❌ Avoid mutations
+// items.push(newItem);
+// object.property = value;
+```
+
+**Composable functions:**
+```javascript
+// ✅ Small, single-purpose functions
+const isValid = (x) => x > 0;
+const double = (x) => x * 2;
+const process = (x) => isValid(x) ? double(x) : 0;
+
+// ❌ Large monolithic functions
+```
+
+### 2. Performance Optimization
+
+**Use memoization for expensive operations:**
+```javascript
+// ✅ Memoize expensive calculations
+const createMemoized = () => {
+  const cache = new Map();
+  return (arg) => {
+    if (cache.has(arg)) return cache.get(arg);
+    const result = expensiveOperation(arg);
+    cache.set(arg, result);
+    return result;
+  };
+};
+```
+
+**Optimize loops:**
+```javascript
+// ✅ for...of / for...in (faster)
+for (const item of items) { }
+for (const key in object) { }
+
+// ❌ forEach (slower)
+items.forEach(item => { });
+Object.keys(object).forEach(key => { });
+```
+
+**Early returns:**
+```javascript
+// ✅ Exit early
+if (invalid) return;
+if (cancelled) continue;
+
+// ❌ Deep nesting
+if (valid) {
+  if (!cancelled) {
+    // deep code
+  }
+}
+```
+
+### 3. Testing Requirements
+
+**Coverage targets:**
+- **Line coverage**: 100%
+- **Statement coverage**: >95%
+- **Function coverage**: >95%
+- **Branch coverage**: >90%
+
+**Test structure:**
+```javascript
+describe("FeatureName", () => {
+  describe("functionName", () => {
+    it("should handle normal case", () => {});
+    it("should handle edge case", () => {});
+    it("should handle error case", () => {});
+  });
+});
+```
+
+**Always test:**
+- ✅ Happy path
+- ✅ Edge cases (empty, null, undefined, zero)
+- ✅ Error conditions
+- ✅ Boundary values
+
+**Performance benchmarks for critical paths:**
+```javascript
+it("should process 1000 items in <100ms", () => {
+  const start = performance.now();
+  const result = processItems(largeDataset);
+  const duration = performance.now() - start;
+  
+  expect(duration).toBeLessThan(100);
+});
+```
+
+### 4. Error Handling
+
+**Always handle errors:**
+```javascript
+// ✅ Try-catch for async operations
+try {
+  const result = await riskyOperation();
+} catch (error) {
+  console.error("Operation failed:", error);
+  throw error; // Or handle gracefully
+}
+
+// ✅ Validate inputs
+if (!file) throw new Error("File is required");
+if (items.length === 0) throw new Error("No items to process");
+```
+
+**User-friendly error messages:**
+```javascript
+// ✅ Clear, actionable errors
+throw new Error("Payment Sheet Uploaded. Please upload the Order Sheet.");
+
+// ❌ Vague errors
+throw new Error("Invalid file");
+```
+
+### 5. Documentation
+
+**JSDoc for all exported functions:**
+```javascript
+/**
+ * Calculates profit from orders and payments
+ * @param {Array} orders - Order items array
+ * @param {Object} payments - Payment records by order ID
+ * @param {Object} otherExpenses - Additional expenses
+ * @param {Object} remotePriceList - SKU price list
+ * @returns {Object} Profit statistics and breakdown
+ * @pure
+ */
+export const calculateProfit = (orders, payments, otherExpenses, remotePriceList) => {
+  // implementation
+};
+```
+
+**Mark pure functions:**
+```javascript
+/**
+ * @pure - indicates no side effects
+ */
+```
+
+**Comment complex logic:**
+```javascript
+// Calculate customer return percentage avoiding division by zero
+const returnPct = total === 0 ? 0 : (returned / total * 100).toFixed(2);
+```
+
+### 6. React Best Practices
+
+**Hooks:**
+```javascript
+// ✅ Custom hooks for reusable logic
+const useOrderData = (orderId) => {
+  const [data, setData] = useState(null);
+  // logic
+  return data;
+};
+
+// ✅ Dependency arrays are complete
+useEffect(() => {
+  fetchData(id);
+}, [id]); // Include all dependencies
+```
+
+**Component structure:**
+```javascript
+// ✅ Functional components
+const Component = ({ prop1, prop2 }) => {
+  // hooks
+  // handlers
+  // render
+};
+
+// ❌ Class components (avoid unless necessary)
+```
+
+**Memoization:**
+```javascript
+// ✅ Memoize expensive components
+const ExpensiveComponent = React.memo(({ data }) => {
+  // render
+});
+
+// ✅ Memoize expensive calculations
+const total = useMemo(() => 
+  items.reduce((sum, item) => sum + item.price, 0),
+  [items]
+);
+```
+
+### 7. Naming Conventions
+
+**Variables:**
+```javascript
+// ✅ Descriptive camelCase
+const orderTotal = 100;
+const isUserLoggedIn = true;
+const customerReturnPercentage = 25.5;
+
+// ❌ Abbreviations
+const tot = 100;
+const usrLog = true;
+```
+
+**Functions:**
+```javascript
+// ✅ Verb-based for actions
+const calculateTotal = () => {};
+const fetchOrders = () => {};
+const isValid = () => {};
+
+// ✅ Predicates start with is/has/should
+const isReturned = (order) => order.status === "RETURNED";
+const hasPayment = (order) => !!order.payment;
+```
+
+**Constants:**
+```javascript
+// ✅ UPPER_SNAKE_CASE for true constants
+const MAX_FILE_SIZE = 5242880; // 5MB
+const DEFAULT_TIMEOUT = 30000;
+
+// ✅ camelCase for configuration objects
+const apiConfig = { timeout: 3000 };
+```
+
+### 8. File Organization
+
+**Import order:**
+```javascript
+// 1. External dependencies
+import React from "react";
+import * as XLSX from "xlsx";
+
+// 2. Internal dependencies
+import { formatCurrency } from "../../utils/formatCurrency";
+import { useAuth } from "../../hooks/useAuth";
+
+// 3. Relative imports
+import { Header } from "./Header";
+import styles from "./Component.css";
+```
+
+**Export order:**
+```javascript
+// ✅ Named exports (preferred for tree-shaking)
+export const functionName = () => {};
+export { helperFunction };
+
+// Default export only for components
+export default MyComponent;
+```
+
+### 9. Data Processing
+
+**Excel/CSV processing:**
+```javascript
+// ✅ Validate file type
+if (workbook.SheetNames.length < 3) {
+  throw new Error("Invalid file structure");
+}
+
+// ✅ Handle missing sheets
+const sheet = workbook.Sheets["Orders"];
+if (!sheet) throw new Error("Orders sheet not found");
+
+// ✅ Clean data
+const headers = rows[0].map(h => 
+  String(h || "").replace(/<[^>]+>/g, "").trim()
+);
+```
+
+**Large dataset handling:**
+```javascript
+// ✅ Use for loops for performance
+for (const item of largeArray) {
+  // process
+}
+
+// ✅ Single-pass algorithms
+const stats = data.reduce((acc, item) => {
+  // calculate multiple metrics in one pass
+}, initialValue);
+```
+
+### 10. Firebase Integration
+
+**Database operations:**
+```javascript
+// ✅ Use ref for paths
+const ordersRef = ref(database, 'orders');
+
+// ✅ Handle offline gracefully
+try {
+  await set(dataRef, value);
+} catch (error) {
+  if (error.code === 'PERMISSION_DENIED') {
+    // Handle auth error
+  }
+}
+```
+
+**Security:**
+```javascript
+// ✅ Sanitize Firebase keys
+const sanitizeKey = (str) => 
+  str.replace(/[.#$/[\]]/g, "-");
+
+// ✅ Validate auth before operations
+if (!user) throw new Error("Authentication required");
+```
+
+### 11. Async/Await
+
+**Always use async/await:**
+```javascript
+// ✅ Clean async/await
+const fetchData = async () => {
+  try {
+    const response = await api.get('/data');
+    return response.data;
+  } catch (error) {
+    console.error('Fetch failed:', error);
+    throw error;
+  }
+};
+
+// ❌ Promise chains (avoid)
+api.get('/data').then(r => r.data).catch(e => console.error(e));
+```
+
+**Promise.all for parallel operations:**
+```javascript
+// ✅ Parallel execution
+const [orders, payments, prices] = await Promise.all([
+  fetchOrders(),
+  fetchPayments(),
+  fetchPrices()
+]);
+```
+
+### 12. Code Style
+
+**ESLint rules (respect existing):**
+```javascript
+// These are allowed per eslintConfig:
+let unused; // no-unused-vars: off
+if (x == "5") {} // eqeqeq: off
+switch (x) {} // default-case: off
+```
+
+**Formatting:**
+- Use 2 spaces for indentation
+- Semicolons optional (project doesn't use them consistently)
+- Strings: Prefer double quotes for JSX, single for JS
+- Line length: Reasonable (no hard limit)
+
+### 13. Security
+
+**Never commit:**
+- ❌ API keys
+- ❌ Firebase config (use environment variables)
+- ❌ Secrets or passwords
+- ❌ Personal data
+
+**Sanitize user input:**
+```javascript
+// ✅ Always validate and sanitize
+const sanitizedSku = sku.replace(/[^a-zA-Z0-9-]/g, "");
+const amount = Math.max(0, parseFloat(input) || 0);
+```
+
+### 14. Performance Budgets
+
+**Frontend:**
+- Bundle size: Keep under 1MB
+- Initial load: <3 seconds
+- Time to Interactive: <5 seconds
+
+**Backend:**
+- API response: <200ms for simple queries
+- File processing: <5 seconds for typical files
+- Database queries: <100ms
+
+**Data Processing:**
+- 1000 orders: <50ms
+- 10,000 orders: <500ms
+- Excel parsing: <2 seconds
+
+### 15. Git Practices
+
+**Commits:**
+```bash
+# ✅ Descriptive commit messages
+git commit -m "feat: add memoization to SKU normalization"
+git commit -m "fix: handle edge case in payment consolidation"
+git commit -m "test: add coverage for error conditions"
+git commit -m "perf: optimize order processing loop"
+git commit -m "refactor: extract pure helper functions"
+
+# ❌ Vague messages
+git commit -m "update"
+git commit -m "fixes"
+```
+
+**Branch naming:**
+```bash
+feature/add-amazon-calculator
+bugfix/fix-payment-parsing
+hotfix/security-vulnerability
+refactor/optimize-performance
+test/increase-coverage
+```
+
+### 16. React Patterns
+
+**State management:**
+```javascript
+// ✅ Use context for global state
+const AuthContext = createContext();
+
+// ✅ Local state for component-specific data
+const [isOpen, setIsOpen] = useState(false);
+
+// ✅ Derived state from props/state
+const total = items.reduce((sum, item) => sum + item.price, 0);
+```
+
+**Component composition:**
+```javascript
+// ✅ Small, focused components
+const Header = () => <header>...</header>;
+const Content = ({ children }) => <main>{children}</main>;
+const Page = () => <><Header /><Content>...</Content></>;
+```
+
+### 17. Error Boundaries
+
+**Wrap risky components:**
+```javascript
+class ErrorBoundary extends React.Component {
+  state = { hasError: false };
+  
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+  
+  componentDidCatch(error, errorInfo) {
+    console.error('Error caught:', error, errorInfo);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <h1>Something went wrong.</h1>;
+    }
+    return this.props.children;
+  }
+}
+```
+
+### 18. API Design
+
+**RESTful endpoints:**
+```javascript
+// ✅ Clear, resource-based
+POST   /api/payments
+GET    /api/orders/:id
+PUT    /api/orders/:id
+DELETE /api/orders/:id
+
+// ✅ Consistent response format
+{
+  success: true,
+  data: { ... },
+  error: null
+}
+```
+
+**Error responses:**
+```javascript
+res.status(400).json({
+  success: false,
+  error: "Invalid order ID",
+  details: { field: "orderId", received: null }
+});
+```
+
+### 19. File Handling
+
+**Excel/CSV processing:**
+```javascript
+// ✅ Validate file structure
+if (!workbook.Sheets["Orders"]) {
+  throw new Error("Orders sheet not found");
+}
+
+// ✅ Handle large files efficiently
+const rows = XLSX.utils.sheet_to_json(sheet, {
+  header: 1,
+  defval: "",
+  raw: false
+});
+
+// ✅ Clean and validate data
+const cleanData = data
+  .filter(row => row.some(cell => cell !== ""))
+  .map(normalizeRow);
+```
+
+### 20. Testing Patterns
+
+**Unit tests:**
+```javascript
+// ✅ Test pure functions in isolation
+it("should normalize SKU correctly", () => {
+  expect(normalizeSku('"""SKU:TEST"""')).toBe("TEST");
+});
+
+// ✅ Test edge cases
+it("should handle empty input", () => {
+  expect(processData([])).toEqual([]);
+});
+
+// ✅ Test error conditions
+it("should throw on invalid input", () => {
+  expect(() => process(null)).toThrow("Invalid input");
+});
+```
+
+**Integration tests:**
+```javascript
+// ✅ Test complete workflows
+it("should process entire order flow", async () => {
+  const orders = await extractOrdersFromSheet(file);
+  const payments = await extractPaymentsFromSheet(file);
+  const stats = getPaymentsAgainstTheOrders(orders, payments, {}, {});
+  
+  expect(stats.Profit.Sales).toBeGreaterThan(0);
+});
+```
+
+**Mock external dependencies:**
+```javascript
+// ✅ Mock XLSX, Firebase, etc.
+jest.mock("xlsx");
+jest.mock("firebase/database");
+```
+
+### 21. Code Review Checklist
+
+Before committing, ensure:
+- [ ] All tests pass
+- [ ] No linter errors
+- [ ] Coverage maintained/improved
+- [ ] Performance benchmarks pass
+- [ ] Documentation updated
+- [ ] No console.logs (except intentional logging)
+- [ ] No commented-out code
+- [ ] Proper error handling
+- [ ] Pure functions used where possible
+- [ ] Memoization for expensive operations
+
+### 22. Common Patterns
+
+**SKU normalization:**
+```javascript
+const sku = memoizedNormalizeSku(order["sku"]);
+```
+
+**Order status checks:**
+```javascript
+if (isOrderCancelled(order)) continue;
+if (isRTO(settlement)) handleRTO();
+if (isReturned(status)) processReturn();
+```
+
+**Excel headers:**
+```javascript
+const headers = rows[0].map(stripHtmlTags);
+```
+
+**Payment consolidation:**
+```javascript
+const payments = getConsolidatedPayments(rawPayments);
+```
+
+### 23. Anti-Patterns to Avoid
+
+**❌ Don't:**
+- Use `var` (use `const`/`let`)
+- Mutate props or state directly
+- Have functions >100 lines (split them)
+- Skip error handling
+- Use magic numbers (define constants)
+- Ignore TypeScript opportunities
+- Skip tests "because it's simple"
+- Optimize prematurely (measure first)
+- Use `any` type if using TypeScript
+
+### 24. NPM Scripts
+
+**Use existing scripts:**
+```bash
+# Development
+npm run dev                        # Start both frontend and backend
+npm run dev:frontend              # Frontend only
+npm run dev:backend               # Backend only
+
+# Testing
+npm run test:watch                # Watch all tests
+npm run test:coverage             # Run with coverage
+npm run test:flipkart:watch       # Watch specific feature
+npm run test:frontend:coverage    # Frontend coverage
+
+# Build
+npm run build                     # Build production
+npm run update-version            # Update version
+```
+
+### 25. Feature Development Flow
+
+**1. Create feature branch:**
+```bash
+git checkout -b feature/add-new-calculator
+```
+
+**2. Write tests first (TDD):**
+```javascript
+describe("NewCalculator", () => {
+  it("should calculate correctly", () => {
+    expect(calculate(input)).toBe(expected);
+  });
+});
+```
+
+**3. Implement with pure functions:**
+```javascript
+// Pure helper
+const calculateFee = (amount, rate) => amount * rate;
+
+// Main function using helpers
+export const processCalculation = (data) => {
+  return data.map(item => ({
+    ...item,
+    fee: calculateFee(item.amount, 0.15)
+  }));
+};
+```
+
+**4. Optimize if needed:**
+```javascript
+// Add memoization for expensive operations
+const memoizedCalculate = createMemoized(expensiveCalculation);
+```
+
+**5. Document:**
+```javascript
+/**
+ * Processes calculation for new feature
+ * @param {Array} data - Input data
+ * @returns {Array} Processed results
+ * @pure
+ */
+```
+
+**6. Verify:**
+```bash
+npm run test:coverage
+npm run build
+```
+
+### 26. Specific Project Notes
+
+**Flipkart Calculator:**
+- Uses Excel file uploads
+- Processes orders and payments
+- Calculates profit/loss
+- Handles returns and cancellations
+- SKU-based grouping
+- Memoization critical for performance
+
+**Payment Processing:**
+- Multiple payment entries per order
+- Complex fee structure
+- Settlement calculations
+- Return handling
+
+**File Structure:**
+- Keep features self-contained in `features/`
+- Shared utilities in `utils/` and `lib/`
+- Hooks in `hooks/`
+- Components in `components/`
+
+### 27. When to Optimize
+
+**✅ Optimize when:**
+- Processing >1000 items
+- Function called frequently in loops
+- User-facing performance issues
+- Measured bottlenecks
+
+**❌ Don't optimize:**
+- Without measuring first
+- One-time operations
+- Premature optimization
+- Micro-optimizations without evidence
+
+### 28. Bundle Size
+
+**Keep bundle small:**
+```javascript
+// ✅ Dynamic imports
+const Calculator = lazy(() => import('./Calculator'));
+
+// ✅ Tree-shakeable exports
+export { function1, function2 };
+
+// ❌ Import entire libraries
+// import _ from 'lodash'; // Bad
+import { debounce } from 'lodash'; // Good
+```
+
+### 29. Accessibility
+
+**Always include:**
+```jsx
+// ✅ Semantic HTML
+<button onClick={handleClick}>Submit</button>
+
+// ✅ Alt text
+<img src={logo} alt="TheEcomWay Logo" />
+
+// ✅ Labels
+<label htmlFor="email">Email:</label>
+<input id="email" type="email" />
+```
+
+### 30. Documentation Files
+
+**❌ NEVER create documentation files unless explicitly requested:**
+```javascript
+// ❌ Don't create these files proactively:
+// - README.md
+// - CHANGELOG.md
+// - CONTRIBUTING.md
+// - Any .md files
+// - Documentation folders
+
+// ✅ Only create if user explicitly asks:
+// "Create a README for this feature"
+// "Add a CHANGELOG"
+```
+
+**Instead, document in code:**
+```javascript
+// ✅ Use JSDoc comments
+/**
+ * Calculates profit from orders
+ * @param {Array} orders - Order data
+ * @returns {Object} Profit statistics
+ * @pure
+ */
+export const calculateProfit = (orders) => { ... };
+
+// ✅ Inline comments for complex logic
+// Calculate percentage avoiding division by zero
+const pct = total === 0 ? 0 : (value / total * 100);
+```
+
+**Why avoid .md files:**
+- Code comments are closer to the code
+- JSDoc shows in IDE tooltips
+- Less file clutter
+- Documentation lives with the code
+
+### 31. Final Principles
+
+1. **Write tests first** - TDD leads to better code
+2. **Keep functions pure** - Easier to test and reason about
+3. **Memoize strategically** - Measure before optimizing
+4. **Document in code, not files** - Unless explicitly requested
+5. **Handle errors gracefully** - Never crash silently
+6. **Performance matters** - But readability first
+7. **DRY** - Don't repeat yourself
+8. **KISS** - Keep it simple, stupid
+9. **YAGNI** - You ain't gonna need it
+10. **Refactor continuously** - Leave code better than you found it
+
+---
+
+## Quick Commands Reference
+
+```bash
+# Testing
+npm run test:flipkart:watch      # Watch Flipkart tests
+npm run test:coverage            # Full coverage report
+npm run test:frontend:watch      # Watch all frontend tests
+
+# Development
+npm run dev                      # Start full stack
+npm run kill-ports               # Kill stuck processes
+
+# Build
+npm run build                    # Production build
+npm run update-version           # Bump version
+```
+
+---
+
+**Remember:** Always measure performance before optimizing, write tests first, and keep functions pure and composable!
+
