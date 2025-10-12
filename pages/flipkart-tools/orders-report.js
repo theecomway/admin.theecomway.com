@@ -25,11 +25,11 @@ import {
   FileText,
   BarChart3,
   PieChart,
-  ShoppingCart,
   RotateCcw,
   RefreshCw,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  BadgeCheck
 } from "lucide-react";
 import styles from "../../styles/orders-report.module.css";
 
@@ -65,6 +65,8 @@ const OrdersPaymentDashboard = () => {
     status: true,
     topSKUs: true,
     returns: true,
+    courierReturns: true,
+    claims: true,
   });
 
   // Parse Payment Sheet with special header handling
@@ -255,15 +257,34 @@ const OrdersPaymentDashboard = () => {
           order.Order_ID || order.order_id || order.OrderID || order["Order ID"]
         );
         
+        const settlement = paymentMap[orderId] || 0;
+        const orderStatus = order.Order_Item_Status || order.order_item_status || "N/A";
+        const returnReason = order.Return_Reason || order.return_reason || order["Return Reason"] || "N/A";
+        
+        // Determine if this is a return or RTO
+        const isReturn = orderStatus.toLowerCase().includes('return') || returnReason !== "N/A";
+        const isRTO = orderStatus.toLowerCase().includes('rto');
+        const isReturnOrRTO = isReturn || isRTO;
+        
+        // Determine if this is a courier return (return with zero settlement)
+        const isCourierReturn = isReturnOrRTO && settlement === 0;
+        
+        // Determine if this is a claim (return/RTO with positive settlement)
+        const isClaim = isReturnOrRTO && settlement > 0;
+        const claimAmount = isClaim ? settlement : 0;
+        
         return {
           Order_ID: order.Order_ID || order.order_id || order.OrderID || order["Order ID"] || "N/A",
-          Order_Item_Status: order.Order_Item_Status || order.order_item_status || "N/A",
+          Order_Item_Status: orderStatus,
           SKU: order.SKU || order.sku || "N/A",
           Product_Title: order.Product_Title || order.product_title || order["Product Title"] || "N/A",
           Quantity: order.Quantity || order.quantity || 0,
-          Return_Reason: order.Return_Reason || order.return_reason || order["Return Reason"] || "N/A",
+          Return_Reason: returnReason,
           Return_Sub_Reason: order.Return_Sub_Reason || order.return_sub_reason || order["Return Sub Reason"] || "N/A",
-          Total_Settlement: paymentMap[orderId] || 0,
+          Total_Settlement: settlement,
+          Return_Type: isCourierReturn ? "Courier Return" : isReturnOrRTO ? "Regular Return" : "N/A",
+          Is_Claim: isClaim,
+          Claim_Amount: claimAmount,
         };
       });
 
@@ -359,6 +380,17 @@ const OrdersPaymentDashboard = () => {
     const positiveSettlement = filteredData.filter(row => parseFloat(row.Total_Settlement) > 0).length;
     const negativeSettlement = filteredData.filter(row => parseFloat(row.Total_Settlement) < 0).length;
     const zeroSettlement = filteredData.filter(row => parseFloat(row.Total_Settlement) === 0).length;
+    
+    // Courier returns analysis
+    const courierReturns = filteredData.filter(row => row.Return_Type === "Courier Return").length;
+    const regularReturns = filteredData.filter(row => row.Return_Type === "Regular Return").length;
+    const courierReturnRate = totalOrders > 0 ? (courierReturns / totalOrders * 100) : 0;
+    
+    // Claims analysis (returns/RTOs with positive settlement)
+    const ordersWithClaims = filteredData.filter(row => row.Is_Claim === true).length;
+    const totalClaimAmount = filteredData.reduce((sum, row) => sum + (parseFloat(row.Claim_Amount) || 0), 0);
+    const avgClaimAmount = ordersWithClaims > 0 ? totalClaimAmount / ordersWithClaims : 0;
+    const claimRate = totalOrders > 0 ? (ordersWithClaims / totalOrders * 100) : 0;
 
     return {
       totalOrders,
@@ -374,6 +406,13 @@ const OrdersPaymentDashboard = () => {
       positiveSettlement,
       negativeSettlement,
       zeroSettlement,
+      courierReturns,
+      regularReturns,
+      courierReturnRate,
+      ordersWithClaims,
+      totalClaimAmount,
+      avgClaimAmount,
+      claimRate,
     };
   }, [filteredData, totalSettlement]);
 
@@ -428,6 +467,46 @@ const OrdersPaymentDashboard = () => {
         accessorKey: "Return_Sub_Reason",
         header: "Return Sub Reason",
         cell: (info) => <div>{info.getValue()}</div>,
+      },
+      {
+        accessorKey: "Return_Type",
+        header: "Return Type",
+        cell: (info) => {
+          const type = info.getValue();
+          if (type === "N/A") return <span style={{ color: '#9ca3af' }}>-</span>;
+          const isCourier = type === "Courier Return";
+          return (
+            <span className={`${styles.statusBadge}`} style={{ 
+              backgroundColor: isCourier ? '#fef3c7' : '#fed7aa',
+              color: isCourier ? '#92400e' : '#9a3412'
+            }}>
+              {type}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "Is_Claim",
+        header: "Claim",
+        cell: (info) => {
+          const isClaim = info.getValue();
+          const claimAmount = info.row.original.Claim_Amount;
+          if (!isClaim) return <span style={{ color: '#9ca3af' }}>-</span>;
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <span className={`${styles.statusBadge}`} style={{ 
+                backgroundColor: '#f3e8ff',
+                color: '#7c3aed',
+                fontSize: '0.75rem'
+              }}>
+                ✓ Claim
+              </span>
+              <span style={{ fontSize: '0.75rem', color: '#7c3aed', fontWeight: 600 }}>
+                ₹{parseFloat(claimAmount || 0).toFixed(0)}
+              </span>
+            </div>
+          );
+        },
       },
       {
         accessorKey: "Total_Settlement",
@@ -748,6 +827,27 @@ const OrdersPaymentDashboard = () => {
                 <div className={styles.analyticsCardValue}>{statistics.totalQuantity.toLocaleString()}</div>
                 <div className={styles.analyticsCardSubtext}>Items across all orders</div>
               </div>
+
+              {/* Courier Returns */}
+              <div className={styles.analyticsCard}>
+                <div className={styles.analyticsCardLabel}>Courier Returns</div>
+                <div className={styles.analyticsCardValue}>{statistics.courierReturns}</div>
+                <div className={styles.analyticsCardSubtext}>{statistics.courierReturnRate.toFixed(1)}% of total orders</div>
+              </div>
+
+              {/* Regular Returns */}
+              <div className={styles.analyticsCard}>
+                <div className={styles.analyticsCardLabel}>Regular Returns</div>
+                <div className={styles.analyticsCardValue}>{statistics.regularReturns}</div>
+                <div className={styles.analyticsCardSubtext}>Returns with settlement</div>
+              </div>
+
+              {/* Claims */}
+              <div className={styles.analyticsCard} style={{ background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)' }}>
+                <div className={styles.analyticsCardLabel} style={{ color: '#7c3aed' }}>Claims (Positive Return Settlement)</div>
+                <div className={styles.analyticsCardValue} style={{ color: '#7c3aed' }}>{statistics.ordersWithClaims}</div>
+                <div className={styles.analyticsCardSubtext} style={{ color: '#9333ea' }}>Total: ₹{statistics.totalClaimAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+              </div>
             </div>
 
             {/* Settlement Breakdown */}
@@ -842,6 +942,86 @@ const OrdersPaymentDashboard = () => {
                         <div className={styles.topItemValue} style={{ color: '#dc2626' }}>{item.count}</div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Courier Returns Analysis */}
+            {statistics.courierReturns > 0 && (
+              <div className={styles.analyticsSection}>
+                <div className={styles.analyticsSectionHeader} onClick={() => setShowAnalytics({...showAnalytics, courierReturns: !showAnalytics.courierReturns})}>
+                  <h3 className={styles.analyticsSectionTitle}>
+                    <RefreshCw style={{ width: '1.25rem', height: '1.25rem', color: '#3b82f6' }} />
+                    Courier Returns Analysis
+                  </h3>
+                  {showAnalytics.courierReturns ? <ChevronUp style={{ width: '1.25rem', height: '1.25rem' }} /> : <ChevronDown style={{ width: '1.25rem', height: '1.25rem' }} />}
+                </div>
+                {showAnalytics.courierReturns && (
+                  <div className={styles.settementBreakdown}>
+                    <div className={styles.settlementType}>
+                      <div className={`${styles.settlementTypeValue}`} style={{ color: '#f59e0b' }}>{statistics.courierReturns}</div>
+                      <div className={styles.settlementTypeLabel}>Courier Returns</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>Zero settlement</div>
+                    </div>
+                    <div className={styles.settlementType}>
+                      <div className={`${styles.settlementTypeValue}`} style={{ color: '#10b981' }}>{statistics.regularReturns}</div>
+                      <div className={styles.settlementTypeLabel}>Regular Returns</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>With settlement</div>
+                    </div>
+                    <div className={styles.settlementType}>
+                      <div className={`${styles.settlementTypeValue}`} style={{ color: '#3b82f6' }}>{statistics.courierReturnRate.toFixed(1)}%</div>
+                      <div className={styles.settlementTypeLabel}>Courier Return Rate</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>Of total orders</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Claims Analysis */}
+            {statistics.ordersWithClaims > 0 && (
+              <div className={styles.analyticsSection}>
+                <div className={styles.analyticsSectionHeader} onClick={() => setShowAnalytics({...showAnalytics, claims: !showAnalytics.claims})}>
+                  <h3 className={styles.analyticsSectionTitle}>
+                    <BadgeCheck style={{ width: '1.25rem', height: '1.25rem', color: '#7c3aed' }} />
+                    Claims Analysis (Returns/RTOs with Positive Settlement)
+                  </h3>
+                  {showAnalytics.claims ? <ChevronUp style={{ width: '1.25rem', height: '1.25rem' }} /> : <ChevronDown style={{ width: '1.25rem', height: '1.25rem' }} />}
+                </div>
+                {showAnalytics.claims && (
+                  <div>
+                    <div className={styles.settementBreakdown}>
+                      <div className={styles.settlementType}>
+                        <div className={`${styles.settlementTypeValue}`} style={{ color: '#7c3aed' }}>{statistics.ordersWithClaims}</div>
+                        <div className={styles.settlementTypeLabel}>Total Claims</div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>{statistics.claimRate.toFixed(1)}% of orders</div>
+                      </div>
+                      <div className={styles.settlementType}>
+                        <div className={`${styles.settlementTypeValue}`} style={{ color: '#7c3aed' }}>₹{statistics.totalClaimAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+                        <div className={styles.settlementTypeLabel}>Total Claim Amount</div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>Positive settlement</div>
+                      </div>
+                      <div className={styles.settlementType}>
+                        <div className={`${styles.settlementTypeValue}`} style={{ color: '#7c3aed' }}>₹{statistics.avgClaimAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+                        <div className={styles.settlementTypeLabel}>Avg Claim Value</div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>Per claim order</div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#faf5ff', borderRadius: '0.5rem', borderLeft: '4px solid #7c3aed' }}>
+                      <p style={{ fontSize: '0.875rem', color: '#6d28d9', fontWeight: 500, marginBottom: '0.5rem' }}>
+                        ℹ️ What are Claims?
+                      </p>
+                      <p style={{ fontSize: '0.75rem', color: '#7c3aed', lineHeight: '1.5' }}>
+                        Claims are orders marked as Returns or RTOs that have positive settlement amounts. These represent cases where you received payment despite the return/RTO, which may indicate:
+                      </p>
+                      <ul style={{ fontSize: '0.75rem', color: '#7c3aed', marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        <li>Partial refunds to customers</li>
+                        <li>Shipping or handling charges recovered</li>
+                        <li>Restocking fees applied</li>
+                        <li>Settlement timing differences</li>
+                      </ul>
+                    </div>
                   </div>
                 )}
               </div>
