@@ -67,6 +67,7 @@ const OrdersPaymentDashboard = () => {
     returns: true,
     courierReturns: true,
     claims: true,
+    claimsTable: true,
   });
 
   // Parse Payment Sheet with special header handling
@@ -122,6 +123,25 @@ const OrdersPaymentDashboard = () => {
     return String(id).trim().toLowerCase();
   };
 
+  // Normalize SKU - Remove quotes and SKU: prefix
+  const normalizeSku = (sku) => {
+    if (!sku) return "";
+    return String(sku)
+      .replace(/^["']+|["']+$/g, '') // Remove quotes from start/end
+      .replace(/["']/g, '')           // Remove any remaining quotes
+      .replace(/^SKU:/i, '')          // Remove SKU: prefix (case insensitive)
+      .trim();
+  };
+
+  // Normalize Product Title - Remove quotes
+  const normalizeProductTitle = (title) => {
+    if (!title) return "";
+    return String(title)
+      .replace(/^["']+|["']+$/g, '') // Remove quotes from start/end
+      .replace(/["']/g, '')           // Remove any remaining quotes
+      .trim();
+  };
+  
   // Drag and drop handlers
   const handleDrag = (e, type) => {
     e.preventDefault();
@@ -161,6 +181,15 @@ const OrdersPaymentDashboard = () => {
     const ws = XLSX.utils.json_to_sheet(filteredData);
     XLSX.utils.book_append_sheet(wb, ws, "Consolidated Data");
     XLSX.writeFile(wb, `flipkart-consolidated-${Date.now()}.xlsx`);
+  };
+
+  // Export Claims to Excel
+  const handleClaimsExport = () => {
+    const claimsData = filteredData.filter(row => row.Is_Claim === true);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(claimsData);
+    XLSX.utils.book_append_sheet(wb, ws, "Claims");
+    XLSX.writeFile(wb, `flipkart-claims-${Date.now()}.xlsx`);
   };
 
   // Handle file processing
@@ -273,11 +302,15 @@ const OrdersPaymentDashboard = () => {
         const isClaim = isReturnOrRTO && settlement > 0;
         const claimAmount = isClaim ? settlement : 0;
         
+        // Normalize SKU and Product Title
+        const rawSku = order.SKU || order.sku || "";
+        const rawProductTitle = order.Product_Title || order.product_title || order["Product Title"] || "";
+        
         return {
           Order_ID: order.Order_ID || order.order_id || order.OrderID || order["Order ID"] || "N/A",
           Order_Item_Status: orderStatus,
-          SKU: order.SKU || order.sku || "N/A",
-          Product_Title: order.Product_Title || order.product_title || order["Product Title"] || "N/A",
+          SKU: normalizeSku(rawSku) || "N/A",
+          Product_Title: normalizeProductTitle(rawProductTitle) || "N/A",
           Quantity: order.Quantity || order.quantity || 0,
           Return_Reason: returnReason,
           Return_Sub_Reason: order.Return_Sub_Reason || order.return_sub_reason || order["Return Sub Reason"] || "N/A",
@@ -1021,6 +1054,99 @@ const OrdersPaymentDashboard = () => {
                         <li>Restocking fees applied</li>
                         <li>Settlement timing differences</li>
                       </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Claims Detail Table */}
+            {statistics.ordersWithClaims > 0 && (
+              <div className={styles.analyticsSection}>
+                <div className={styles.analyticsSectionHeader}>
+                  <div onClick={() => setShowAnalytics({...showAnalytics, claimsTable: !showAnalytics.claimsTable})} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }}>
+                    <BadgeCheck style={{ width: '1.25rem', height: '1.25rem', color: '#7c3aed' }} />
+                    <h3 className={styles.analyticsSectionTitle} style={{ marginBottom: 0 }}>
+                      All Claims - Detailed View ({statistics.ordersWithClaims} orders)
+                    </h3>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleClaimsExport();
+                      }}
+                      className={`${styles.filterButton} ${styles.exportButton}`}
+                      style={{ fontSize: '0.75rem', padding: '0.5rem 0.75rem' }}
+                    >
+                      <Download style={{ width: '0.875rem', height: '0.875rem' }} />
+                      Export Claims
+                    </button>
+                    {showAnalytics.claimsTable ? <ChevronUp style={{ width: '1.25rem', height: '1.25rem', cursor: 'pointer' }} onClick={() => setShowAnalytics({...showAnalytics, claimsTable: !showAnalytics.claimsTable})} /> : <ChevronDown style={{ width: '1.25rem', height: '1.25rem', cursor: 'pointer' }} onClick={() => setShowAnalytics({...showAnalytics, claimsTable: !showAnalytics.claimsTable})} />}
+                  </div>
+                </div>
+                {showAnalytics.claimsTable && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <div className={styles.tableWrapper}>
+                      <table className={styles.table}>
+                        <thead style={{ backgroundColor: '#faf5ff' }}>
+                          <tr>
+                            <th className={styles.th} style={{ color: '#7c3aed' }}>Order ID</th>
+                            <th className={styles.th} style={{ color: '#7c3aed' }}>Status</th>
+                            <th className={styles.th} style={{ color: '#7c3aed' }}>SKU</th>
+                            <th className={styles.th} style={{ color: '#7c3aed' }}>Product Title</th>
+                            <th className={styles.th} style={{ color: '#7c3aed' }}>Qty</th>
+                            <th className={styles.th} style={{ color: '#7c3aed' }}>Return Reason</th>
+                            <th className={styles.th} style={{ color: '#7c3aed' }}>Return Sub Reason</th>
+                            <th className={styles.th} style={{ color: '#7c3aed' }}>Claim Amount (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody className={styles.tbody}>
+                          {filteredData.filter(row => row.Is_Claim === true).map((row, idx) => (
+                            <tr key={idx} className={`${styles.tr} ${idx % 2 === 0 ? styles.trEven : styles.trOdd}`} style={{ backgroundColor: idx % 2 === 0 ? '#faf5ff' : 'white' }}>
+                              <td className={styles.td}>
+                                <div className={styles.orderIdCell}>{row.Order_ID}</div>
+                              </td>
+                              <td className={styles.td}>
+                                <span className={`${styles.statusBadge}`} style={{ 
+                                  backgroundColor: row.Order_Item_Status.toLowerCase().includes('return') ? '#fed7aa' : '#fef3c7',
+                                  color: row.Order_Item_Status.toLowerCase().includes('return') ? '#9a3412' : '#92400e'
+                                }}>
+                                  {row.Order_Item_Status}
+                                </span>
+                              </td>
+                              <td className={styles.td}>
+                                <div className={styles.skuCell}>{row.SKU}</div>
+                              </td>
+                              <td className={styles.td}>
+                                <div className={styles.productCell} title={row.Product_Title}>{row.Product_Title}</div>
+                              </td>
+                              <td className={styles.td}>
+                                <div className={styles.quantityCell}>{row.Quantity}</div>
+                              </td>
+                              <td className={styles.td} style={{ fontSize: '0.875rem' }}>
+                                {row.Return_Reason}
+                              </td>
+                              <td className={styles.td} style={{ fontSize: '0.875rem' }}>
+                                {row.Return_Sub_Reason}
+                              </td>
+                              <td className={styles.td}>
+                                <div style={{ textAlign: 'right', fontWeight: 700, color: '#7c3aed', fontSize: '1rem' }}>
+                                  ₹{parseFloat(row.Claim_Amount || 0).toFixed(2)}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f3e8ff', borderRadius: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.875rem', color: '#7c3aed', fontWeight: 600 }}>
+                        Total Claims: {statistics.ordersWithClaims} orders
+                      </span>
+                      <span style={{ fontSize: '1rem', fontWeight: 700, color: '#7c3aed' }}>
+                        Total Amount: ₹{statistics.totalClaimAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
                     </div>
                   </div>
                 )}
