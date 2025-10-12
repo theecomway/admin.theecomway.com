@@ -22,7 +22,14 @@ import {
   DollarSign,
   AlertCircle,
   CheckCircle2,
-  FileText
+  FileText,
+  BarChart3,
+  PieChart,
+  ShoppingCart,
+  RotateCcw,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import styles from "../../styles/orders-report.module.css";
 
@@ -51,6 +58,13 @@ const OrdersPaymentDashboard = () => {
     order: false,
     payment1: false,
     payment2: false,
+  });
+
+  // Analytics sections toggle
+  const [showAnalytics, setShowAnalytics] = useState({
+    status: true,
+    topSKUs: true,
+    returns: true,
   });
 
   // Parse Payment Sheet with special header handling
@@ -304,6 +318,47 @@ const OrdersPaymentDashboard = () => {
     }, {});
     const uniqueSKUs = new Set(filteredData.map(row => row.SKU)).size;
     const ordersWithReturns = filteredData.filter(row => row.Return_Reason !== "N/A").length;
+    
+    // Average order value
+    const avgOrderValue = totalOrders > 0 ? totalSettlement / totalOrders : 0;
+    
+    // Return rate
+    const returnRate = totalOrders > 0 ? (ordersWithReturns / totalOrders * 100) : 0;
+    
+    // Top SKUs by settlement
+    const skuSettlements = filteredData.reduce((acc, row) => {
+      const sku = row.SKU;
+      if (!acc[sku]) {
+        acc[sku] = { sku, settlement: 0, orders: 0, quantity: 0 };
+      }
+      acc[sku].settlement += parseFloat(row.Total_Settlement) || 0;
+      acc[sku].orders += 1;
+      acc[sku].quantity += parseInt(row.Quantity) || 0;
+      return acc;
+    }, {});
+    
+    const topSKUs = Object.values(skuSettlements)
+      .sort((a, b) => b.settlement - a.settlement)
+      .slice(0, 5);
+    
+    // Return reasons breakdown
+    const returnReasons = filteredData
+      .filter(row => row.Return_Reason !== "N/A")
+      .reduce((acc, row) => {
+        const reason = row.Return_Reason;
+        acc[reason] = (acc[reason] || 0) + 1;
+        return acc;
+      }, {});
+    
+    const topReturnReasons = Object.entries(returnReasons)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([reason, count]) => ({ reason, count }));
+    
+    // Orders with positive vs negative settlement
+    const positiveSettlement = filteredData.filter(row => parseFloat(row.Total_Settlement) > 0).length;
+    const negativeSettlement = filteredData.filter(row => parseFloat(row.Total_Settlement) < 0).length;
+    const zeroSettlement = filteredData.filter(row => parseFloat(row.Total_Settlement) === 0).length;
 
     return {
       totalOrders,
@@ -312,6 +367,13 @@ const OrdersPaymentDashboard = () => {
       uniqueSKUs,
       ordersWithReturns,
       statusCounts,
+      avgOrderValue,
+      returnRate,
+      topSKUs,
+      topReturnReasons,
+      positiveSettlement,
+      negativeSettlement,
+      zeroSettlement,
     };
   }, [filteredData, totalSettlement]);
 
@@ -338,7 +400,7 @@ const OrdersPaymentDashboard = () => {
           return (
             <span className={`${styles.statusBadge} ${getStatusClass()}`}>
               {status}
-            </span>
+          </span>
           );
         },
       },
@@ -543,7 +605,7 @@ const OrdersPaymentDashboard = () => {
                   </>
                 )}
                 <input
-                  type="file"
+        type="file"
                   accept=".xlsx,.xls"
                   onChange={(e) => setPayment2File(e.target.files[0])}
                   style={{ display: 'none' }}
@@ -664,6 +726,127 @@ const OrdersPaymentDashboard = () => {
               </div>
             </div>
 
+            {/* Advanced Analytics */}
+            <div className={styles.analyticsGrid}>
+              {/* Average Order Value */}
+              <div className={styles.analyticsCard}>
+                <div className={styles.analyticsCardLabel}>Avg Order Value</div>
+                <div className={styles.analyticsCardValue}>₹{statistics.avgOrderValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+                <div className={styles.analyticsCardSubtext}>Per order settlement</div>
+              </div>
+
+              {/* Return Rate */}
+              <div className={styles.analyticsCard}>
+                <div className={styles.analyticsCardLabel}>Return Rate</div>
+                <div className={styles.analyticsCardValue}>{statistics.returnRate.toFixed(1)}%</div>
+                <div className={styles.analyticsCardSubtext}>{statistics.ordersWithReturns} of {statistics.totalOrders} orders</div>
+              </div>
+
+              {/* Total Quantity */}
+              <div className={styles.analyticsCard}>
+                <div className={styles.analyticsCardLabel}>Total Quantity</div>
+                <div className={styles.analyticsCardValue}>{statistics.totalQuantity.toLocaleString()}</div>
+                <div className={styles.analyticsCardSubtext}>Items across all orders</div>
+              </div>
+            </div>
+
+            {/* Settlement Breakdown */}
+            <div className={styles.analyticsSection}>
+              <div className={styles.analyticsSectionHeader} onClick={() => setShowAnalytics({...showAnalytics, status: !showAnalytics.status})}>
+                <h3 className={styles.analyticsSectionTitle}>
+                  <PieChart style={{ width: '1.25rem', height: '1.25rem', color: '#3b82f6' }} />
+                  Settlement Analysis
+                </h3>
+                {showAnalytics.status ? <ChevronUp style={{ width: '1.25rem', height: '1.25rem' }} /> : <ChevronDown style={{ width: '1.25rem', height: '1.25rem' }} />}
+              </div>
+              {showAnalytics.status && (
+                <>
+                  <div className={styles.settementBreakdown}>
+                    <div className={styles.settlementType}>
+                      <div className={`${styles.settlementTypeValue} ${styles.positiveValue}`}>{statistics.positiveSettlement}</div>
+                      <div className={styles.settlementTypeLabel}>Positive</div>
+                    </div>
+                    <div className={styles.settlementType}>
+                      <div className={`${styles.settlementTypeValue} ${styles.neutralValue}`}>{statistics.zeroSettlement}</div>
+                      <div className={styles.settlementTypeLabel}>Zero</div>
+                    </div>
+                    <div className={styles.settlementType}>
+                      <div className={`${styles.settlementTypeValue} ${styles.negativeValue}`}>{statistics.negativeSettlement}</div>
+                      <div className={styles.settlementTypeLabel}>Negative</div>
+                    </div>
+                  </div>
+                  <div className={styles.statusBreakdown} style={{ marginTop: '1.5rem' }}>
+                    {Object.entries(statistics.statusCounts).map(([status, count]) => {
+                      const percentage = (count / statistics.totalOrders * 100).toFixed(1);
+                      return (
+                        <div key={status} className={styles.statusBar}>
+                          <div className={styles.statusBarLabel}>{status}</div>
+                          <div className={styles.statusBarProgress}>
+                            <div className={styles.statusBarFill} style={{ width: `${percentage}%` }}></div>
+                          </div>
+                          <div className={styles.statusBarValue}>{count} ({percentage}%)</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Top SKUs */}
+            {statistics.topSKUs.length > 0 && (
+              <div className={styles.analyticsSection}>
+                <div className={styles.analyticsSectionHeader} onClick={() => setShowAnalytics({...showAnalytics, topSKUs: !showAnalytics.topSKUs})}>
+                  <h3 className={styles.analyticsSectionTitle}>
+                    <BarChart3 style={{ width: '1.25rem', height: '1.25rem', color: '#3b82f6' }} />
+                    Top 5 SKUs by Settlement
+                  </h3>
+                  {showAnalytics.topSKUs ? <ChevronUp style={{ width: '1.25rem', height: '1.25rem' }} /> : <ChevronDown style={{ width: '1.25rem', height: '1.25rem' }} />}
+                </div>
+                {showAnalytics.topSKUs && (
+                  <div>
+                    {statistics.topSKUs.map((item, idx) => (
+                      <div key={item.sku} className={styles.topItem}>
+                        <div className={styles.topItemRank}>{idx + 1}</div>
+                        <div className={styles.topItemInfo}>
+                          <div className={styles.topItemLabel}>{item.sku}</div>
+                          <div className={styles.topItemSubtext}>{item.orders} orders • {item.quantity} qty</div>
+                        </div>
+                        <div className={styles.topItemValue}>₹{item.settlement.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Top Return Reasons */}
+            {statistics.topReturnReasons.length > 0 && (
+              <div className={styles.analyticsSection}>
+                <div className={styles.analyticsSectionHeader} onClick={() => setShowAnalytics({...showAnalytics, returns: !showAnalytics.returns})}>
+                  <h3 className={styles.analyticsSectionTitle}>
+                    <RotateCcw style={{ width: '1.25rem', height: '1.25rem', color: '#3b82f6' }} />
+                    Top 5 Return Reasons
+                  </h3>
+                  {showAnalytics.returns ? <ChevronUp style={{ width: '1.25rem', height: '1.25rem' }} /> : <ChevronDown style={{ width: '1.25rem', height: '1.25rem' }} />}
+                </div>
+                {showAnalytics.returns && (
+                  <div>
+                    {statistics.topReturnReasons.map((item, idx) => (
+                      <div key={item.reason} className={styles.topItem}>
+                        <div className={styles.topItemRank}>{idx + 1}</div>
+                        <div className={styles.topItemInfo}>
+                          <div className={styles.topItemLabel} style={{ fontFamily: 'inherit' }}>{item.reason}</div>
+                          <div className={styles.topItemSubtext}>{((item.count / statistics.ordersWithReturns) * 100).toFixed(1)}% of returns</div>
+                        </div>
+                        <div className={styles.topItemValue} style={{ color: '#dc2626' }}>{item.count}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Filters & Search */}
             <div className={styles.filtersCard}>
               <div className={styles.filtersHeader}>
@@ -757,78 +940,78 @@ const OrdersPaymentDashboard = () => {
                   <div className={styles.tableWrapper}>
                     <table className={styles.table}>
                       <thead className={styles.thead}>
-                        {table.getHeaderGroups().map((headerGroup) => (
-                          <tr key={headerGroup.id}>
-                            {headerGroup.headers.map((header) => (
-                              <th
-                                key={header.id}
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <tr key={headerGroup.id}>
+                        {headerGroup.headers.map((header) => (
+                          <th
+                            key={header.id}
                                 className={styles.th}
-                                onClick={header.column.getToggleSortingHandler()}
-                              >
+                            onClick={header.column.getToggleSortingHandler()}
+                          >
                                 <div className={styles.thContent}>
-                                  {flexRender(header.column.columnDef.header, header.getContext())}
+                              {flexRender(header.column.columnDef.header, header.getContext())}
                                   <ArrowUpDown className={styles.sortIcon} />
-                                </div>
-                              </th>
-                            ))}
-                          </tr>
+                            </div>
+                          </th>
                         ))}
-                      </thead>
+                      </tr>
+                    ))}
+                  </thead>
                       <tbody className={styles.tbody}>
                         {table.getRowModel().rows.map((row, idx) => (
                           <tr 
                             key={row.id} 
                             className={`${styles.tr} ${idx % 2 === 0 ? styles.trEven : styles.trOdd}`}
                           >
-                            {row.getVisibleCells().map((cell) => (
+                        {row.getVisibleCells().map((cell) => (
                               <td key={cell.id} className={styles.td}>
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                              </td>
-                            ))}
-                          </tr>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-                  {/* Pagination */}
+              {/* Pagination */}
                   <div className={styles.pagination}>
                     <div className={styles.paginationControls}>
-                      <button
-                        onClick={() => table.previousPage()}
-                        disabled={!table.getCanPreviousPage()}
+                  <button
+                    onClick={() => table.previousPage()}
+                    disabled={!table.getCanPreviousPage()}
                         className={styles.paginationButton}
-                      >
+                  >
                         <ChevronLeft style={{ width: '1rem', height: '1rem' }} />
                         Previous
-                      </button>
+                  </button>
                       <div className={styles.pageInfo}>
                         <span className={styles.pageInfoText}>
                           Page <span className={styles.pageInfoCurrent}>{table.getState().pagination.pageIndex + 1}</span> of <span className={styles.pageInfoTotal}>{table.getPageCount()}</span>
-                        </span>
+                  </span>
                       </div>
-                      <button
-                        onClick={() => table.nextPage()}
-                        disabled={!table.getCanNextPage()}
+                  <button
+                    onClick={() => table.nextPage()}
+                    disabled={!table.getCanNextPage()}
                         className={styles.paginationButton}
-                      >
+                  >
                         Next
                         <ChevronRight style={{ width: '1rem', height: '1rem' }} />
-                      </button>
-                    </div>
+                  </button>
+                </div>
 
-                    <select
-                      value={table.getState().pagination.pageSize}
-                      onChange={(e) => table.setPageSize(Number(e.target.value))}
+                <select
+                  value={table.getState().pagination.pageSize}
+                  onChange={(e) => table.setPageSize(Number(e.target.value))}
                       className={styles.pageSize}
-                    >
-                      {[25, 50, 100, 200].map((pageSize) => (
-                        <option key={pageSize} value={pageSize}>
-                          Show {pageSize}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                >
+                  {[25, 50, 100, 200].map((pageSize) => (
+                    <option key={pageSize} value={pageSize}>
+                      Show {pageSize}
+                    </option>
+                  ))}
+                </select>
+              </div>
                 </>
               )}
             </div>

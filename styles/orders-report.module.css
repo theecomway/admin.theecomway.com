@@ -790,6 +790,217 @@
   background-color: #f9fafb;
 }
 
+/* Analytics Sections */
+.analyticsSection {
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.analyticsSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+
+.analyticsSectionTitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.analyticsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .analyticsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .analyticsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.analyticsCard {
+  background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  transition: all 0.2s;
+}
+
+.analyticsCard:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.analyticsCardLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.analyticsCardValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.analyticsCardSubtext {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
+}
+
+.statusBreakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.statusBarLabel {
+  flex: 1;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.statusBarValue {
+  font-weight: 600;
+  color: #111827;
+  font-size: 0.875rem;
+}
+
+.statusBarProgress {
+  flex: 2;
+  height: 0.5rem;
+  background-color: #e5e7eb;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.statusBarFill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+  transition: width 0.3s ease;
+}
+
+.topItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border-radius: 0.375rem;
+  margin-bottom: 0.5rem;
+  transition: background-color 0.2s;
+}
+
+.topItem:hover {
+  background: #f3f4f6;
+}
+
+.topItemRank {
+  width: 1.5rem;
+  height: 1.5rem;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.topItemInfo {
+  flex: 1;
+  margin-left: 0.75rem;
+}
+
+.topItemLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #111827;
+  font-family: monospace;
+}
+
+.topItemSubtext {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.125rem;
+}
+
+.topItemValue {
+  font-weight: 700;
+  color: #059669;
+  font-size: 0.875rem;
+}
+
+.progressRing {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto;
+}
+
+.settementBreakdown {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 1rem;
+}
+
+.settlementType {
+  text-align: center;
+}
+
+.settlementTypeValue {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.settlementTypeLabel {
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.positiveValue {
+  color: #059669;
+}
+
+.negativeValue {
+  color: #dc2626;
+}
+
+.neutralValue {
+  color: #6b7280;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
