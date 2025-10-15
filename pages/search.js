@@ -53,6 +53,10 @@ const UserDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [showSkuDetails, setShowSkuDetails] = useState(false);
   const [showAllMatches, setShowAllMatches] = useState(false);
+  const [searchHistory, setSearchHistory] = useState([]);
+  const [activeSearchType, setActiveSearchType] = useState(null);
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -73,9 +77,21 @@ const UserDashboard = () => {
     setError("");
   };
 
+  // Add to search history
+  const addToSearchHistory = (searchTerm, searchType) => {
+    if (searchTerm.trim().length > 0) {
+      const newHistory = [
+        { term: searchTerm.trim(), type: searchType, timestamp: Date.now() },
+        ...searchHistory.filter(item => item.term !== searchTerm.trim() || item.type !== searchType)
+      ].slice(0, 10); // Keep only last 10 searches
+      setSearchHistory(newHistory);
+    }
+  };
+
   // Handle email input change - clear other fields
   const handleEmailChange = (value) => {
     setEmailSearch(value);
+    setActiveSearchType(value.trim().length > 0 ? 'email' : null);
     if (value.trim().length > 0) {
       setPhoneSearch("");
       setCompanySearch("");
@@ -83,12 +99,16 @@ const UserDashboard = () => {
       setAllMatches([]);
       setSelectedUserId(null);
       setError("");
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
     }
   };
 
   // Handle phone input change - clear other fields
   const handlePhoneChange = (value) => {
     setPhoneSearch(value);
+    setActiveSearchType(value.trim().length > 0 ? 'phone' : null);
     if (value.trim().length > 0) {
       setEmailSearch("");
       setCompanySearch("");
@@ -96,12 +116,16 @@ const UserDashboard = () => {
       setAllMatches([]);
       setSelectedUserId(null);
       setError("");
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
     }
   };
 
   // Handle company input change - clear other fields
   const handleCompanyChange = (value) => {
     setCompanySearch(value);
+    setActiveSearchType(value.trim().length > 0 ? 'company' : null);
     if (value.trim().length > 0) {
       setEmailSearch("");
       setPhoneSearch("");
@@ -109,6 +133,9 @@ const UserDashboard = () => {
       setAllMatches([]);
       setSelectedUserId(null);
       setError("");
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
     }
   };
 
@@ -190,6 +217,10 @@ const UserDashboard = () => {
     setSelectedUserId(null);
     setShowSkuDetails(false);
     setLoading(true);
+    setShowSuggestions(false);
+    
+    // Add to search history
+    addToSearchHistory(emailSearch.trim(), 'email');
 
     try {
       const searchValue = emailSearch.trim().toLowerCase();
@@ -246,6 +277,10 @@ const UserDashboard = () => {
     setSelectedUserId(null);
     setShowSkuDetails(false);
     setLoading(true);
+    setShowSuggestions(false);
+    
+    // Add to search history
+    addToSearchHistory(phoneSearch.trim(), 'phone');
 
     try {
       const phoneSearchValue = phoneSearch.trim();
@@ -307,6 +342,10 @@ const UserDashboard = () => {
     setSelectedUserId(null);
     setShowSkuDetails(false);
     setLoading(true);
+    setShowSuggestions(false);
+    
+    // Add to search history
+    addToSearchHistory(companySearch.trim(), 'company');
 
     try {
       const companySearchValue = companySearch.trim().toLowerCase();
@@ -386,6 +425,55 @@ const UserDashboard = () => {
         </Box>
         
         <Box>
+          {/* Search History */}
+          {searchHistory.length > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                Recent Searches
+              </Typography>
+              <Box display="flex" flexWrap="wrap" gap={1}>
+                {searchHistory.slice(0, 5).map((item, index) => (
+                  <Chip
+                    key={index}
+                    label={item.term}
+                    size="small"
+                    variant="outlined"
+                    icon={
+                      item.type === 'email' ? <EmailIcon /> :
+                      item.type === 'phone' ? <PhoneIcon /> : <BusinessIcon />
+                    }
+                    onClick={() => {
+                      if (item.type === 'email') {
+                        handleEmailChange(item.term);
+                        handleEmailSearch();
+                      } else if (item.type === 'phone') {
+                        handlePhoneChange(item.term);
+                        handlePhoneSearch();
+                      } else {
+                        handleCompanyChange(item.term);
+                        handleCompanySearch();
+                      }
+                    }}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {/* Active Search Indicator */}
+          {activeSearchType && (
+            <Box sx={{ mb: 2, p: 2, bgcolor: 'primary.50', borderRadius: 2, border: '1px solid', borderColor: 'primary.200' }}>
+              <Box display="flex" alignItems="center" gap={1}>
+                {activeSearchType === 'email' ? <EmailIcon color="primary" /> :
+                 activeSearchType === 'phone' ? <PhoneIcon color="primary" /> : <BusinessIcon color="primary" />}
+                <Typography variant="body2" color="primary.main" fontWeight={500}>
+                  Searching by {activeSearchType === 'email' ? 'Email' : activeSearchType === 'phone' ? 'Phone' : 'Company'}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
           {/* Horizontal Search Fields */}
           <Box 
             display="grid" 
@@ -437,12 +525,20 @@ const UserDashboard = () => {
                   fontWeight: 500,
                   borderRadius: 2,
                   textTransform: "none",
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&:hover': {
+                    boxShadow: '0 2px 8px rgba(25, 118, 210, 0.2)',
+                  },
+                  '&:disabled': {
+                    opacity: 0.6,
+                  }
                 }}
               >
-                {loading ? (
+                {loading && activeSearchType === 'email' ? (
                   <Box display="flex" alignItems="center">
                     <CircularProgress size={14} sx={{ mr: 1 }} />
-                    Searching...
+                    Searching Email...
                   </Box>
                 ) : (
                   <Box display="flex" alignItems="center">
@@ -497,12 +593,20 @@ const UserDashboard = () => {
                   fontWeight: 500,
                   borderRadius: 2,
                   textTransform: "none",
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&:hover': {
+                    boxShadow: '0 2px 8px rgba(76, 175, 80, 0.2)',
+                  },
+                  '&:disabled': {
+                    opacity: 0.6,
+                  }
                 }}
               >
-                {loading ? (
+                {loading && activeSearchType === 'phone' ? (
                   <Box display="flex" alignItems="center">
                     <CircularProgress size={14} sx={{ mr: 1 }} />
-                    Searching...
+                    Searching Phone...
                   </Box>
                 ) : (
                   <Box display="flex" alignItems="center">
@@ -557,12 +661,20 @@ const UserDashboard = () => {
                   fontWeight: 500,
                   borderRadius: 2,
                   textTransform: "none",
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&:hover': {
+                    boxShadow: '0 2px 8px rgba(156, 39, 176, 0.2)',
+                  },
+                  '&:disabled': {
+                    opacity: 0.6,
+                  }
                 }}
               >
-                {loading ? (
+                {loading && activeSearchType === 'company' ? (
                   <Box display="flex" alignItems="center">
                     <CircularProgress size={14} sx={{ mr: 1 }} />
-                    Searching...
+                    Searching Company...
                   </Box>
                 ) : (
                   <Box display="flex" alignItems="center">
@@ -640,27 +752,41 @@ const UserDashboard = () => {
       {allMatches.length > 0 && !userData && (
         <Fade in={allMatches.length > 0} timeout={200}>
           <Paper
-            elevation={1}
+            elevation={2}
             sx={{
               p: isMobile ? 2 : 3,
               width: "100%",
               maxWidth: 800,
               bgcolor: "#fff",
-              borderRadius: 2,
+              borderRadius: 3,
               border: "1px solid #e0e0e0",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
             }}
           >
-            <Box display="flex" alignItems="center" mb={3}>
-              <SearchIcon sx={{ mr: 1, color: "primary.main" }} />
-              <Typography variant="h5" fontWeight={500}>
-                Search Results
-              </Typography>
-              <Chip 
-                label={`${allMatches.length} found`} 
-                color="primary" 
-                size="small" 
-                sx={{ ml: 2 }}
-              />
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
+              <Box display="flex" alignItems="center">
+                <SearchIcon sx={{ mr: 1, color: "primary.main" }} />
+                <Typography variant="h5" fontWeight={500}>
+                  Search Results
+                </Typography>
+                <Chip 
+                  label={`${allMatches.length} found`} 
+                  color="primary" 
+                  size="small" 
+                  sx={{ ml: 2 }}
+                />
+              </Box>
+              <Box display="flex" alignItems="center" gap={1}>
+                <Typography variant="caption" color="text.secondary">
+                  Searched by {activeSearchType === 'email' ? 'Email' : activeSearchType === 'phone' ? 'Phone' : 'Company'}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={activeSearchType === 'email' ? 'Email' : activeSearchType === 'phone' ? 'Phone' : 'Company'}
+                  color={activeSearchType === 'email' ? 'primary' : activeSearchType === 'phone' ? 'success' : 'secondary'}
+                  icon={activeSearchType === 'email' ? <EmailIcon /> : activeSearchType === 'phone' ? <PhoneIcon /> : <BusinessIcon />}
+                />
+              </Box>
             </Box>
             
             <Box display="flex" flexDirection="column" gap={2}>
