@@ -43,8 +43,9 @@ const createWhatsAppLink = (phoneNumber, message) => {
 };
 
 const UserDashboard = () => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchType, setSearchType] = useState("email");
+  const [emailSearch, setEmailSearch] = useState("");
+  const [phoneSearch, setPhoneSearch] = useState("");
+  const [companySearch, setCompanySearch] = useState("");
   const [userData, setUserData] = useState(null);
   const [allMatches, setAllMatches] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState(null);
@@ -58,8 +59,57 @@ const UserDashboard = () => {
 
   const calculateDaysLeft = (timestamp) => {
     const now = Date.now();
-    const diff = timestamp - now;
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    return Math.ceil((timestamp - now) / (1000 * 60 * 60 * 24));
+  };
+
+  // Clear all search fields
+  const clearAllSearches = () => {
+    setEmailSearch("");
+    setPhoneSearch("");
+    setCompanySearch("");
+    setUserData(null);
+    setAllMatches([]);
+    setSelectedUserId(null);
+    setError("");
+  };
+
+  // Handle email input change - clear other fields
+  const handleEmailChange = (value) => {
+    setEmailSearch(value);
+    if (value.trim().length > 0) {
+      setPhoneSearch("");
+      setCompanySearch("");
+      setUserData(null);
+      setAllMatches([]);
+      setSelectedUserId(null);
+      setError("");
+    }
+  };
+
+  // Handle phone input change - clear other fields
+  const handlePhoneChange = (value) => {
+    setPhoneSearch(value);
+    if (value.trim().length > 0) {
+      setEmailSearch("");
+      setCompanySearch("");
+      setUserData(null);
+      setAllMatches([]);
+      setSelectedUserId(null);
+      setError("");
+    }
+  };
+
+  // Handle company input change - clear other fields
+  const handleCompanyChange = (value) => {
+    setCompanySearch(value);
+    if (value.trim().length > 0) {
+      setEmailSearch("");
+      setPhoneSearch("");
+      setUserData(null);
+      setAllMatches([]);
+      setSelectedUserId(null);
+      setError("");
+    }
   };
 
   const handleUserSelect = async (userId) => {
@@ -132,7 +182,9 @@ const UserDashboard = () => {
     }
   };
 
-  const handleSearch = async () => {
+  const handleEmailSearch = async () => {
+    if (!emailSearch.trim()) return;
+    
     setError("");
     setUserData(null);
     setSelectedUserId(null);
@@ -140,151 +192,164 @@ const UserDashboard = () => {
     setLoading(true);
 
     try {
-      let userId = null;
-      let userEmail = null;
-      let userPhoneNumber = null;
+      const searchValue = emailSearch.trim().toLowerCase();
+      const usersRef = collection(firestore, "users");
       let allMatchingUsers = [];
-
-      if (searchType === "email") {
-        // Search through users collection for email field with partial match using range queries
-        const searchValue = searchTerm.trim().toLowerCase();
-        const usersRef = collection(firestore, "users");
+      
+      console.log("Searching for email:", searchValue);
+      
+      // Create range query for partial email matching
+      const q = query(
+        usersRef,
+        where("email", ">=", searchValue),
+        where("email", "<=", searchValue + "\uf8ff")
+      );
+      
+      const snapshot = await getDocs(q);
+      console.log("Users found:", snapshot.size);
+      
+      snapshot.forEach((doc) => {
+        const userData = doc.data();
         
-        try {
-          console.log("Searching for email:", searchValue);
-          
-          // Create range query for partial email matching
-          // This will find emails that start with the search term
-          const q = query(
-            usersRef,
-            where("email", ">=", searchValue),
-            where("email", "<=", searchValue + "\uf8ff")
-          );
-          
-          const snapshot = await getDocs(q);
-          console.log("Users found:", snapshot.size);
-          
-          snapshot.forEach((doc) => {
-            const userData = doc.data();
-            
-            if (userData?.email) {
-              const email = userData.email.toLowerCase();
-              // Double-check for partial match (in case of case sensitivity issues)
-              if (email.includes(searchValue)) {
-                const match = {
-                  userId: doc.id,
-                  email: userData.email,
-                  phoneNumber: userData.phone || null,
-                  companyName: userData.companyName || null,
-                };
-                allMatchingUsers.push(match);
-              }
-            }
-          });
-        } catch (error) {
-          console.error("Email search error:", error);
-          console.error("Error details:", error.code, error.message);
-          setError(`Error searching for email: ${error.message}. Please try again.`);
-          setLoading(false);
-          return;
+        if (userData?.email) {
+          const email = userData.email.toLowerCase();
+          if (email.includes(searchValue)) {
+            const match = {
+              userId: doc.id,
+              email: userData.email,
+              phoneNumber: userData.phone || null,
+              companyName: userData.companyName || null,
+            };
+            allMatchingUsers.push(match);
+          }
         }
-      } else if (searchType === "phone") {
-        // Search through users collection for phone field with partial match using range queries
-        const phoneSearchValue = searchTerm.trim();
-        const usersRef = collection(firestore, "users");
-        
-        try {
-          console.log("Searching for phone:", phoneSearchValue);
-          
-          // Create range query for partial phone matching
-          const q = query(
-            usersRef,
-            where("phone", ">=", phoneSearchValue),
-            where("phone", "<=", phoneSearchValue + "\uf8ff")
-          );
-          
-          const snapshot = await getDocs(q);
-          console.log("Users found:", snapshot.size);
-          
-          snapshot.forEach((doc) => {
-            const userData = doc.data();
-            
-            if (userData?.phone) {
-              const phone = userData.phone;
-              // Double-check for partial match
-              if (phone.includes(phoneSearchValue)) {
-                const match = {
-                  userId: doc.id,
-                  email: userData.email || null,
-                  phoneNumber: userData.phone,
-                  companyName: userData.companyName || null,
-                };
-                allMatchingUsers.push(match);
-              }
-            }
-          });
-        } catch (error) {
-          console.error("Phone search error:", error);
-          console.error("Error details:", error.code, error.message);
-          setError(`Error searching for phone: ${error.message}. Please try again.`);
-          setLoading(false);
-          return;
-        }
-      } else if (searchType === "company") {
-        // Search through users collection for companyName field with partial match using range queries
-        const companySearchValue = searchTerm.trim().toLowerCase();
-        const usersRef = collection(firestore, "users");
-        
-        try {
-          console.log("Searching for company:", companySearchValue);
-          
-          // Create range query for partial company name matching
-          const q = query(
-            usersRef,
-            where("companyName", ">=", companySearchValue),
-            where("companyName", "<=", companySearchValue + "\uf8ff")
-          );
-          
-          const snapshot = await getDocs(q);
-          console.log("Users found:", snapshot.size);
-          
-          snapshot.forEach((doc) => {
-            const userData = doc.data();
-            
-            if (userData?.companyName) {
-              const companyName = userData.companyName.toLowerCase();
-              // Double-check for partial match
-              if (companyName.includes(companySearchValue)) {
-                const match = {
-                  userId: doc.id,
-                  email: userData.email || null,
-                  phoneNumber: userData.phone || null,
-                  companyName: userData.companyName,
-                };
-                allMatchingUsers.push(match);
-              }
-            }
-          });
-        } catch (error) {
-          console.error("Company search error:", error);
-          console.error("Error details:", error.code, error.message);
-          setError(`Error searching for company: ${error.message}. Please try again.`);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Set all matches for display
+      });
+      
       setAllMatches(allMatchingUsers);
-
+      
       if (allMatchingUsers.length === 0) {
-        setError("No users found matching your search criteria.");
-        setLoading(false);
-        return;
+        setError("No users found matching this email.");
       }
-    } catch (err) {
-      console.error(err);
-      setError("Something went wrong.");
+    } catch (error) {
+      console.error("Email search error:", error);
+      setError(`Error searching for email: ${error.message}. Please try again.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneSearch = async () => {
+    if (!phoneSearch.trim()) return;
+    
+    setError("");
+    setUserData(null);
+    setSelectedUserId(null);
+    setShowSkuDetails(false);
+    setLoading(true);
+
+    try {
+      const phoneSearchValue = phoneSearch.trim();
+      const usersRef = collection(firestore, "users");
+      let allMatchingUsers = [];
+      
+      console.log("Searching for phone:", phoneSearchValue);
+      
+      // Get all users and filter client-side for better phone matching
+      const q = query(usersRef);
+      const snapshot = await getDocs(q);
+      console.log("Total users to check:", snapshot.size);
+      
+      snapshot.forEach((doc) => {
+        const userData = doc.data();
+        
+        if (userData?.phone) {
+          const storedPhone = userData.phone;
+          const digitsOnly = storedPhone.replace(/\D/g, '');
+          const searchDigits = phoneSearchValue.replace(/\D/g, '');
+          
+          // Check multiple matching patterns
+          const matches = 
+            storedPhone.includes(phoneSearchValue) || // Direct string match
+            digitsOnly.includes(searchDigits) || // Digits only match
+            storedPhone.replace(/\D/g, "").includes(phoneSearchValue.replace(/\D/g, "")); // Cross-format match
+          
+          if (matches) {
+            const match = {
+              userId: doc.id,
+              email: userData.email || null,
+              phoneNumber: userData.phone,
+              companyName: userData.companyName || null,
+            };
+            allMatchingUsers.push(match);
+            console.log("Phone match found:", userData.phone, "for search:", phoneSearchValue);
+          }
+        }
+      });
+      
+      setAllMatches(allMatchingUsers);
+      
+      if (allMatchingUsers.length === 0) {
+        setError("No users found matching this phone number.");
+      }
+    } catch (error) {
+      console.error("Phone search error:", error);
+      setError(`Error searching for phone: ${error.message}. Please try again.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompanySearch = async () => {
+    if (!companySearch.trim()) return;
+    
+    setError("");
+    setUserData(null);
+    setSelectedUserId(null);
+    setShowSkuDetails(false);
+    setLoading(true);
+
+    try {
+      const companySearchValue = companySearch.trim().toLowerCase();
+      const usersRef = collection(firestore, "users");
+      let allMatchingUsers = [];
+      
+      console.log("Searching for company:", companySearchValue);
+      
+      // Create range query for partial company name matching
+      const q = query(
+        usersRef,
+        where("companyName", ">=", companySearchValue),
+        where("companyName", "<=", companySearchValue + "\uf8ff")
+      );
+      
+      const snapshot = await getDocs(q);
+      console.log("Users found:", snapshot.size);
+      
+      snapshot.forEach((doc) => {
+        const userData = doc.data();
+        
+        if (userData?.companyName) {
+          const companyName = userData.companyName.toLowerCase();
+          if (companyName.includes(companySearchValue)) {
+            const match = {
+              userId: doc.id,
+              email: userData.email || null,
+              phoneNumber: userData.phone || null,
+              companyName: userData.companyName,
+            };
+            allMatchingUsers.push(match);
+          }
+        }
+      });
+      
+      setAllMatches(allMatchingUsers);
+      
+      if (allMatchingUsers.length === 0) {
+        setError("No users found matching this company name.");
+      }
+    } catch (error) {
+      console.error("Company search error:", error);
+      setError(`Error searching for company: ${error.message}. Please try again.`);
     } finally {
       setLoading(false);
     }
@@ -321,107 +386,214 @@ const UserDashboard = () => {
         </Box>
         
         <Box>
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel>Search By</InputLabel>
-            <Select
-              value={searchType}
-              label="Search By"
-              onChange={(e) => setSearchType(e.target.value)}
-            >
-              <MenuItem value="email">
-                <Box display="flex" alignItems="center">
-                  <EmailIcon sx={{ mr: 1 }} />
-                  Email Address
-                </Box>
-              </MenuItem>
-              <MenuItem value="phone">
-                <Box display="flex" alignItems="center">
-                  <PhoneIcon sx={{ mr: 1 }} />
-                  Phone Number
-                </Box>
-              </MenuItem>
-              <MenuItem value="company">
-                <Box display="flex" alignItems="center">
-                  <BusinessIcon sx={{ mr: 1 }} />
-                  Company Name
-                </Box>
-              </MenuItem>
-            </Select>
-          </FormControl>
-
-          <TextField
-            fullWidth
-            label={
-              searchType === "email" 
-                ? "Enter Email Address" 
-                : searchType === "phone" 
-                ? "Enter Phone Number" 
-                : "Enter Company Name"
-            }
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={
-              searchType === "email" 
-                ? "e.g., john, @gmail.com" 
-                : searchType === "phone" 
-                ? "e.g., 9876543210" 
-                : "e.g., My Company"
-            }
+          {/* Horizontal Search Fields */}
+          <Box 
+            display="grid" 
+            gridTemplateColumns={{ xs: "1fr", md: "1fr 1fr 1fr" }} 
+            gap={3} 
             sx={{ mb: 3 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  {searchType === "email" ? <EmailIcon sx={{ color: "text.secondary" }} /> :
-                   searchType === "phone" ? <PhoneIcon sx={{ color: "text.secondary" }} /> :
-                   <BusinessIcon sx={{ color: "text.secondary" }} />}
-                </InputAdornment>
-              ),
-              endAdornment: searchTerm && (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setSearchTerm("")}
-                    size="small"
-                  >
-                    <ClearIcon />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-            onKeyPress={(e) => {
-              if (e.key === "Enter" && !loading) {
-                handleSearch();
-              }
-            }}
-          />
-          
-          <Button
-            fullWidth
-            variant="contained"
-            onClick={handleSearch}
-            disabled={loading || !searchTerm.trim()}
-            sx={{
-              py: 1.5,
-              fontSize: "1rem",
-              fontWeight: 500,
-              borderRadius: 2,
-              textTransform: "none",
-              "&:hover": {
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              },
-            }}
           >
-            {loading ? (
-              <Box display="flex" alignItems="center">
-                <CircularProgress size={20} sx={{ mr: 1 }} />
-                Searching...
-              </Box>
-            ) : (
-              <Box display="flex" alignItems="center">
-                <SearchIcon sx={{ mr: 1 }} />
-                Search Users
-              </Box>
-            )}
-          </Button>
+            {/* Email Search */}
+            <Box>
+              <TextField
+                fullWidth
+                label="Search by Email"
+                value={emailSearch}
+                onChange={(e) => handleEmailChange(e.target.value)}
+                placeholder="e.g., john, @gmail.com"
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailIcon sx={{ color: "text.secondary" }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: emailSearch && (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => handleEmailChange("")}
+                        size="small"
+                      >
+                        <ClearIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter" && !loading) {
+                    handleEmailSearch();
+                  }
+                }}
+              />
+              <Button
+                fullWidth
+                variant="outlined"
+                color="primary"
+                onClick={handleEmailSearch}
+                disabled={loading || !emailSearch.trim()}
+                sx={{
+                  py: 1,
+                  fontSize: "0.85rem",
+                  fontWeight: 500,
+                  borderRadius: 2,
+                  textTransform: "none",
+                }}
+              >
+                {loading ? (
+                  <Box display="flex" alignItems="center">
+                    <CircularProgress size={14} sx={{ mr: 1 }} />
+                    Searching...
+                  </Box>
+                ) : (
+                  <Box display="flex" alignItems="center">
+                    <EmailIcon sx={{ mr: 1, fontSize: 16 }} />
+                    Search Email
+                  </Box>
+                )}
+              </Button>
+            </Box>
+
+            {/* Phone Search */}
+            <Box>
+              <TextField
+                fullWidth
+                label="Search by Phone"
+                value={phoneSearch}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                placeholder="e.g., 9876543210"
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PhoneIcon sx={{ color: "text.secondary" }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: phoneSearch && (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => handlePhoneChange("")}
+                        size="small"
+                      >
+                        <ClearIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter" && !loading) {
+                    handlePhoneSearch();
+                  }
+                }}
+              />
+              <Button
+                fullWidth
+                variant="outlined"
+                color="success"
+                onClick={handlePhoneSearch}
+                disabled={loading || !phoneSearch.trim()}
+                sx={{
+                  py: 1,
+                  fontSize: "0.85rem",
+                  fontWeight: 500,
+                  borderRadius: 2,
+                  textTransform: "none",
+                }}
+              >
+                {loading ? (
+                  <Box display="flex" alignItems="center">
+                    <CircularProgress size={14} sx={{ mr: 1 }} />
+                    Searching...
+                  </Box>
+                ) : (
+                  <Box display="flex" alignItems="center">
+                    <PhoneIcon sx={{ mr: 1, fontSize: 16 }} />
+                    Search Phone
+                  </Box>
+                )}
+              </Button>
+            </Box>
+
+            {/* Company Search */}
+            <Box>
+              <TextField
+                fullWidth
+                label="Search by Company"
+                value={companySearch}
+                onChange={(e) => handleCompanyChange(e.target.value)}
+                placeholder="e.g., My Company"
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <BusinessIcon sx={{ color: "text.secondary" }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: companySearch && (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => handleCompanyChange("")}
+                        size="small"
+                      >
+                        <ClearIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter" && !loading) {
+                    handleCompanySearch();
+                  }
+                }}
+              />
+              <Button
+                fullWidth
+                variant="outlined"
+                color="secondary"
+                onClick={handleCompanySearch}
+                disabled={loading || !companySearch.trim()}
+                sx={{
+                  py: 1,
+                  fontSize: "0.85rem",
+                  fontWeight: 500,
+                  borderRadius: 2,
+                  textTransform: "none",
+                }}
+              >
+                {loading ? (
+                  <Box display="flex" alignItems="center">
+                    <CircularProgress size={14} sx={{ mr: 1 }} />
+                    Searching...
+                  </Box>
+                ) : (
+                  <Box display="flex" alignItems="center">
+                    <BusinessIcon sx={{ mr: 1, fontSize: 16 }} />
+                    Search Company
+                  </Box>
+                )}
+              </Button>
+            </Box>
+          </Box>
+
+          {/* Clear All Button */}
+          <Box display="flex" justifyContent="center">
+            <Button
+              variant="text"
+              onClick={clearAllSearches}
+              disabled={loading}
+              sx={{
+                py: 1,
+                px: 3,
+                fontSize: "0.9rem",
+                fontWeight: 500,
+                borderRadius: 2,
+                textTransform: "none",
+                color: "text.secondary",
+              }}
+            >
+              <ClearIcon sx={{ mr: 1, fontSize: 18 }} />
+              Clear All Searches
+            </Button>
+          </Box>
         </Box>
 
         {error && (
@@ -458,7 +630,7 @@ const UserDashboard = () => {
               Ready to Search
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Enter a search term above to find users by email, phone, or company name
+              Use any of the search fields above to find users by email, phone number, or company name
             </Typography>
           </Paper>
         </Fade>
