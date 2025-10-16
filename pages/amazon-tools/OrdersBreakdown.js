@@ -1,495 +1,701 @@
+import React, { useState, useMemo, useCallback } from "react";
+import * as XLSX from "xlsx";
 import {
-  Autocomplete,
+  Box,
   Button,
-  Checkbox,
-  Container,
-  FormControl,
-  FormControlLabel,
-  FormGroup,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
   Typography,
+  Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  TextField,
+  Autocomplete,
+  CircularProgress,
+  Alert,
+  IconButton,
+  Tooltip,
+  Divider,
+  Card,
+  CardContent,
+  Grid,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TablePagination,
+  TableSortLabel,
 } from "@mui/material";
-import React, { useEffect, useState } from "react";
+import {
+  Upload,
+  X,
+  FilterList,
+  Clear,
+  Download,
+  Visibility,
+  VisibilityOff,
+} from "@mui/icons-material";
 
-import { DataGrid } from "@mui/x-data-grid";
-import PaymentsBreakdown from "./PaymentsBreakdown";
+/**
+ * OrdersBreakdown Component
+ * 
+ * Features:
+ * - File upload (Excel/CSV)
+ * - Dynamic header detection
+ * - Multi-column selection with dropdown
+ * - Individual column filters with unique values
+ * - Sortable data table
+ * - Export functionality
+ * 
+ * @pure - Component uses only props and state, no side effects
+ */
+const OrdersBreakdown = () => {
+  // Core data state
+  const [rawData, setRawData] = useState([]);
+  const [headers, setHeaders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-function formatDate(isoString) {
-  const date = new Date(isoString);
+  // Filter state
+  const [selectedColumns, setSelectedColumns] = useState([]);
+  const [columnFilters, setColumnFilters] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // Options for formatting the date
-  const options = { year: "numeric", month: "long", day: "numeric" };
+  // Table state
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
 
-  // Convert to formatted string
-  return date.toLocaleDateString("en-US", options);
-}
+  // UI state
+  const [showFilters, setShowFilters] = useState(false);
 
-const FileFilterComponent = () => {
-  const [rows, setRows] = useState([]);
-  const [columns, setColumns] = useState([]);
-  const [filters, setFilters] = useState({});
-  const [visibleColumns, setVisibleColumns] = useState([]);
-  const [firstOrderDate, setFirstOrderDate] = useState("");
-  const [lastOrderDate, setLastOrderDate] = useState("");
-  const [numericSummary, setNumericSummary] = useState({});
+  /**
+   * Parse uploaded file and extract headers and data
+   * @param {File} file - The uploaded file
+   * @pure - No side effects, returns parsed data
+   */
+  const parseFile = useCallback(async (file) => {
+    try {
+      setLoading(true);
+      setError("");
 
-  const filterableColumns = [
-    "amazon-order-id",
-    "merchant-order-id",
-    "purchase-date",
-    "last-updated-date",
-    "order-status",
-    "fulfillment-channel",
-    "sales-channel",
-    "order-channel",
-    "url",
-    "ship-service-level",
-    "product-name",
-    "sku",
-    "asin",
-    "item-status",
-    "quantity",
-    "currency",
-    "item-price",
-    "item-tax",
-    "shipping-price",
-    "shipping-tax",
-    "gift-wrap-price",
-    "gift-wrap-tax",
-    "item-promotion-discount",
-    "ship-promotion-discount",
-    "ship-city",
-    "ship-state",
-    "ship-postal-code",
-    "ship-country",
-    "promotion-ids",
-    "is-business-order",
-    "purchase-order-number",
-    "price-designation",
-    "fulfilled-by",
-    "is-replacement-order",
-    "is-exchange-order",
-    "original-order-id",
-    "is-iba",
-    "amazon-programs"
-  ];
-
-  useEffect(() => {
-    const savedFilters = JSON.parse(localStorage.getItem("filters")) || {};
-    const savedVisibleColumns =
-      JSON.parse(localStorage.getItem("visibleColumns")) || filterableColumns;
-    setFilters(savedFilters);
-    setVisibleColumns(savedVisibleColumns);
+      const fileExtension = file.name.split('.').pop().toLowerCase();
+      
+      if (fileExtension === 'txt') {
+        return await parseTXT(file);
+      } else if (['xlsx', 'xls'].includes(fileExtension)) {
+        return await parseExcel(file);
+      } else {
+        throw new Error("Unsupported file format. Please upload TXT or Excel files.");
+      }
+    } catch (err) {
+      setError(err.message);
+      return { headers: [], data: [] };
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("filters", JSON.stringify(filters));
-    localStorage.setItem("visibleColumns", JSON.stringify(visibleColumns));
-  }, [filters, visibleColumns]);
-
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
+  /**
+   * Parse TXT file (tab-separated values)
+   * @param {File} file - TXT file
+   * @returns {Object} Parsed headers and data
+   */
+  const parseTXT = useCallback((file) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
+      
       reader.onload = (e) => {
-        const lines = e.target.result.split("\n");
-        const headers = lines[0].split("\t");
-        setColumns(
-          headers.map((header) => ({
-            field: header,
-            headerName: header,
-            width: 200,
-          }))
-        );
-        const dataRows = lines.slice(1).map((line, id) => {
-          const values = line.split("\t");
-          return {
-            id,
-            ...Object.fromEntries(headers.map((h, i) => [h, values[i] || ""])),
-          };
-        });
-        setRows(dataRows);
+        try {
+          const text = e.target.result;
+          const lines = text.trim().split(/\r?\n/);
+          
+          if (lines.length === 0) {
+            reject(new Error("TXT file is empty"));
+            return;
+          }
 
-        if (headers.includes("purchase-date")) {
-          const dates = dataRows
-            .map((row) => row["purchase-date"])
-            .filter((date) => date)
-            .sort();
-          setFirstOrderDate(formatDate(dates[0]) || "N/A");
-          setLastOrderDate(formatDate(dates[dates.length - 1]) || "N/A");
+          // First row as headers (split by tabs)
+          const headerRow = lines[0].split('\t');
+          const headers = headerRow.map((header, index) => ({
+            id: `col_${index}`,
+            label: header?.toString().trim() || `Column ${index + 1}`,
+            field: `col_${index}`,
+            index,
+          }));
+
+          // Rest as data (split by tabs)
+          const txtData = lines.slice(1).map((line, rowIndex) => {
+            const rowData = { id: rowIndex };
+            const values = line.split('\t');
+            
+            headers.forEach((header, colIndex) => {
+              rowData[header.field] = values[colIndex] || "";
+            });
+            return rowData;
+          });
+
+          resolve({ headers, data: txtData });
+        } catch (error) {
+          reject(new Error(`Failed to parse TXT: ${error.message}`));
         }
       };
+
+      reader.onerror = () => {
+        reject(new Error("Failed to read file"));
+      };
+
       reader.readAsText(file);
-    }
-  };
+    });
+  }, []);
 
-  const handleFilterChange = (event, column) => {
-    setFilters({ ...filters, [column]: event.target.value });
-  };
-
-  const handleColumnVisibilityChange = (event) => {
-    const column = event.target.name;
-    setVisibleColumns((prev) =>
-      event.target.checked
-        ? [...prev, column]
-        : prev.filter((col) => col !== column)
-    );
-  };
-
-  const clearFilters = () => {
-    setFilters({});
-  };
-
-  const filteredRows = rows.filter((row) =>
-    Object.keys(filters).every(
-      (col) =>
-        !filters[col] ||
-        row[col]?.toLowerCase().includes(filters[col].toLowerCase())
-    )
-  );
-
-  const totalQuantity = filteredRows.reduce(
-    (sum, row) => sum + (parseInt(row["quantity"], 10) || 0),
-    0
-  );
-
-  // Calculate numeric summaries for filtered data
-  const calculateNumericSummary = (data) => {
-    const numericColumns = [
-      "quantity", "item-price", "item-tax", "shipping-price", 
-      "shipping-tax", "gift-wrap-price", "gift-wrap-tax", 
-      "item-promotion-discount", "ship-promotion-discount"
-    ];
-    
-    const summary = {};
-    
-    numericColumns.forEach(col => {
-      const values = data
-        .map(row => parseFloat(row[col]) || 0)
-        .filter(val => !isNaN(val));
+  /**
+   * Parse Excel file using XLSX
+   * @param {File} file - Excel file
+   * @returns {Object} Parsed headers and data
+   */
+  const parseExcel = useCallback((file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
       
-      if (values.length > 0) {
-        summary[col] = {
-          total: values.reduce((sum, val) => sum + val, 0),
-          average: values.reduce((sum, val) => sum + val, 0) / values.length,
-          min: Math.min(...values),
-          max: Math.max(...values),
-          count: values.length
-        };
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: "array" });
+          
+          if (workbook.SheetNames.length === 0) {
+            reject(new Error("Excel file has no sheets"));
+            return;
+          }
+
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          
+          if (!worksheet) {
+            reject(new Error("Excel sheet is empty"));
+            return;
+          }
+
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+            header: 1,
+            defval: "",
+            raw: false 
+          });
+
+          if (jsonData.length === 0) {
+            reject(new Error("Excel sheet has no data"));
+            return;
+          }
+
+          // First row as headers
+          const headers = jsonData[0].map((header, index) => ({
+            id: `col_${index}`,
+            label: header?.toString().trim() || `Column ${index + 1}`,
+            field: `col_${index}`,
+            index,
+          }));
+
+          // Rest as data
+          const excelData = jsonData.slice(1).map((row, rowIndex) => {
+            const rowData = { id: rowIndex };
+            headers.forEach((header, colIndex) => {
+              rowData[header.field] = row[colIndex] || "";
+            });
+            return rowData;
+          });
+
+          resolve({ headers, data: excelData });
+        } catch (error) {
+          reject(new Error(`Failed to parse Excel: ${error.message}`));
+        }
+      };
+
+      reader.onerror = () => {
+        reject(new Error("Failed to read file"));
+      };
+
+      reader.readAsArrayBuffer(file);
+    });
+  }, []);
+
+  /**
+   * Handle file upload
+   * @param {Event} event - File input change event
+   */
+  const handleFileUpload = useCallback(async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const { headers: parsedHeaders, data } = await parseFile(file);
+    
+    if (parsedHeaders.length > 0 && data.length > 0) {
+      setHeaders(parsedHeaders);
+      setRawData(data);
+      setSelectedColumns([]);
+      setColumnFilters({});
+      setSearchQuery("");
+      setPage(0);
+      setShowFilters(true);
+    }
+  }, [parseFile]);
+
+  /**
+   * Get unique values for a specific column
+   * @param {string} columnField - Column field identifier
+   * @returns {Array} Array of unique values
+   * @pure - No side effects, returns filtered data
+   */
+  const getColumnUniqueValues = useCallback((columnField) => {
+    const values = rawData
+      .map(row => row[columnField])
+      .filter(value => value !== "" && value != null)
+      .map(value => String(value).trim());
+
+    return [...new Set(values)].sort();
+  }, [rawData]);
+
+  /**
+   * Handle column selection
+   * @param {string} columnId - Selected column ID
+   */
+  const handleColumnSelect = useCallback((columnId) => {
+    setSelectedColumns(prev => {
+      if (prev.includes(columnId)) {
+        // Remove column and its filters
+        const newFilters = { ...columnFilters };
+        delete newFilters[columnId];
+        setColumnFilters(newFilters);
+        return prev.filter(id => id !== columnId);
+      } else {
+        return [...prev, columnId];
       }
     });
-    
-    return summary;
-  };
+  }, [columnFilters]);
 
-  // Update numeric summary when filtered rows change
-  useEffect(() => {
-    setNumericSummary(calculateNumericSummary(filteredRows));
-  }, [filteredRows]);
+  /**
+   * Handle column filter change
+   * @param {string} columnId - Column ID
+   * @param {Array} selectedValues - Selected filter values
+   */
+  const handleColumnFilterChange = useCallback((columnId, selectedValues) => {
+    setColumnFilters(prev => ({
+      ...prev,
+      [columnId]: selectedValues
+    }));
+    setPage(0); // Reset to first page when filtering
+  }, []);
+
+  /**
+   * Clear all filters
+   */
+  const clearAllFilters = useCallback(() => {
+    setColumnFilters({});
+    setSearchQuery("");
+    setPage(0);
+  }, []);
+
+  /**
+   * Remove specific column filter
+   * @param {string} columnId - Column ID to remove filter for
+   */
+  const removeColumnFilter = useCallback((columnId) => {
+    setColumnFilters(prev => {
+      const newFilters = { ...prev };
+      delete newFilters[columnId];
+      return newFilters;
+    });
+  }, []);
+
+  /**
+   * Filter data based on selected columns and filters
+   * @returns {Array} Filtered and processed data
+   * @pure - No side effects, returns filtered data
+   */
+  const filteredData = useMemo(() => {
+    let filtered = rawData;
+
+    // Apply column filters
+    Object.entries(columnFilters).forEach(([columnId, selectedValues]) => {
+      if (selectedValues.length > 0) {
+        filtered = filtered.filter(row => 
+          selectedValues.includes(String(row[columnId]).trim())
+        );
+      }
+    });
+
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(row => {
+        return selectedColumns.some(columnId => {
+          const column = headers.find(h => h.id === columnId);
+          if (!column) return false;
+          const value = String(row[column.field] || "").toLowerCase();
+          return value.includes(query);
+        });
+      });
+    }
+
+    return filtered;
+  }, [rawData, columnFilters, searchQuery, selectedColumns, headers]);
+
+  /**
+   * Sort data based on sort configuration
+   * @returns {Array} Sorted data
+   * @pure - No side effects, returns sorted data
+   */
+  const sortedData = useMemo(() => {
+    if (!sortConfig.key) return filteredData;
+
+    return [...filteredData].sort((a, b) => {
+      const aValue = a[sortConfig.key] || "";
+      const bValue = b[sortConfig.key] || "";
+      
+      const comparison = String(aValue).localeCompare(String(bValue));
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+  }, [filteredData, sortConfig]);
+
+  /**
+   * Handle table sort
+   * @param {string} field - Field to sort by
+   */
+  const handleSort = useCallback((field) => {
+    setSortConfig(prev => ({
+      key: field,
+      direction: prev.key === field && prev.direction === "asc" ? "desc" : "asc"
+    }));
+  }, []);
+
+  /**
+   * Get paginated data
+   * @returns {Array} Current page data
+   * @pure - No side effects, returns paginated data
+   */
+  const paginatedData = useMemo(() => {
+    const start = page * rowsPerPage;
+    return sortedData.slice(start, start + rowsPerPage);
+  }, [sortedData, page, rowsPerPage]);
+
+  /**
+   * Export filtered data to CSV
+   */
+  const exportToCSV = useCallback(() => {
+    if (filteredData.length === 0) return;
+
+    const selectedHeaders = headers.filter(h => selectedColumns.includes(h.id));
+    
+    // Create CSV content
+    const csvHeaders = selectedHeaders.map(h => h.label).join(",");
+    const csvRows = filteredData.map(row => 
+      selectedHeaders.map(h => {
+        const value = row[h.field] || "";
+        // Escape commas and quotes in CSV
+        return `"${String(value).replace(/"/g, '""')}"`;
+      }).join(",")
+    );
+
+    const csvContent = [csvHeaders, ...csvRows].join("\n");
+    
+    // Download file
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `filtered_orders_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [filteredData, headers, selectedColumns]);
+
+  /**
+   * Get selected column details
+   * @returns {Array} Selected column objects
+   * @pure - No side effects, returns column data
+   */
+  const selectedColumnDetails = useMemo(() => {
+    return headers.filter(h => selectedColumns.includes(h.id));
+  }, [headers, selectedColumns]);
 
   return (
-    <Container maxWidth={false}>
-      <input type="file" accept=".txt" onChange={handleFileUpload} />
-      <Typography variant="h6" style={{ marginTop: "10px" }}>
-        Total Orders: {rows.length}
-      </Typography>
-      <Typography variant="h6" style={{ marginTop: "10px" }}>
-        Filtered Orders: {filteredRows.length} | Quantity:
-        {totalQuantity}
-      </Typography>
-      <Typography variant="h6" style={{ marginTop: "10px" }}>
-        First Order Date: {firstOrderDate} | Last Order Date: {lastOrderDate}
+    <Box sx={{ p: 3, maxWidth: "100%" }}>
+      <Typography variant="h4" gutterBottom>
+        Orders Breakdown
       </Typography>
       
-      {/* Numeric Summary Section */}
-      {Object.keys(numericSummary).length > 0 && (
-        <div style={{ marginTop: "20px", padding: "15px", backgroundColor: "#f5f5f5", borderRadius: "8px" }}>
-          <Typography variant="h6" style={{ marginBottom: "15px" }}>
-            Numeric Summary (Filtered Data)
-          </Typography>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "15px" }}>
-            {Object.entries(numericSummary).map(([column, stats]) => (
-              <div key={column} style={{ padding: "10px", backgroundColor: "white", borderRadius: "4px", border: "1px solid #ddd" }}>
-                <Typography variant="subtitle1" style={{ fontWeight: "bold", marginBottom: "8px" }}>
-                  {column.replace(/-/g, " ").toUpperCase()}
-                </Typography>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px", fontSize: "14px" }}>
-                  <div>Total: {stats.total.toFixed(2)}</div>
-                  <div>Average: {stats.average.toFixed(2)}</div>
-                  <div>Min: {stats.min.toFixed(2)}</div>
-                  <div>Max: {stats.max.toFixed(2)}</div>
-                  <div>Count: {stats.count}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      <div style={{ marginTop: "20px", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-        <Button
-          onClick={clearFilters}
-          variant="contained"
-          color="secondary"
-        >
-          Clear All Filters
-        </Button>
-        {Object.keys(filters).filter(key => filters[key]).length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-            <Typography variant="body2" style={{ color: "#666" }}>
-              Active filters ({Object.keys(filters).filter(key => filters[key]).length}):
-            </Typography>
-            {Object.entries(filters)
-              .filter(([key, value]) => value)
-              .map(([key, value]) => (
-                <div
-                  key={key}
-                  style={{
-                    backgroundColor: "#e3f2fd",
-                    padding: "4px 8px",
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    border: "1px solid #2196f3"
-                  }}
-                >
-                  <strong>{key.replace(/-/g, " ")}:</strong> {value}
-                </div>
-              ))}
-          </div>
-        )}
-      </div>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Upload your order file (Excel/TXT) to analyze and filter data by columns and values.
+      </Typography>
 
-      <div style={{ marginTop: "20px", padding: "15px", backgroundColor: "#e3f2fd", borderRadius: "8px" }}>
-        <Typography variant="h6" style={{ marginBottom: "10px" }}>
-          Column Visibility
-        </Typography>
-        <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => setVisibleColumns([...filterableColumns])}
-          >
-            Select All
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => setVisibleColumns([])}
-          >
-            Clear All
-          </Button>
-        </div>
-        <FormGroup 
-          style={{ 
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "8px",
-            maxHeight: "200px",
-            overflowY: "auto"
-          }}
-        >
-          {filterableColumns.map((col) => (
-            <FormControlLabel
-              key={col}
-              control={
-                <Checkbox
-                  checked={visibleColumns.includes(col)}
-                  onChange={handleColumnVisibilityChange}
-                  name={col}
-                  size="small"
-                />
-              }
-              label={
-                <span 
-                  style={{ 
-                    fontSize: "12px",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: "150px",
-                    display: "inline-block"
-                  }}
-                  title={col.replace(/-/g, " ")}
-                >
-                  {col.replace(/-/g, " ")}
-                </span>
-              }
-              style={{ 
-                margin: "2px 0",
-                alignItems: "flex-start"
-              }}
+      {/* File Upload Section */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+            <input
+              accept=".txt,.xlsx,.xls"
+              style={{ display: "none" }}
+              id="file-upload"
+              type="file"
+              onChange={handleFileUpload}
             />
-          ))}
-        </FormGroup>
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: "20px",
-          marginTop: "20px",
-          padding: "20px",
-          backgroundColor: "#f9f9f9",
-          borderRadius: "8px"
-        }}
-      >
-        {filterableColumns
-          .filter((col) => visibleColumns.includes(col))
-          .map((col) => {
-            // Get unique values for this column
-            const uniqueValues = [...new Set(rows.map((row) => row[col] || "").filter(val => val !== ""))].sort();
-            const hasManyValues = uniqueValues.length > 25;
-            
-            return (
-              <FormControl 
-                key={col} 
-                variant="outlined" 
-                size="small"
-                style={{ 
-                  minWidth: "280px",
-                  maxWidth: "100%",
-                  marginBottom: "8px"
-                }}
+            <label htmlFor="file-upload">
+              <Button
+                variant="contained"
+                component="span"
+                startIcon={<Upload />}
+                disabled={loading}
               >
-                {hasManyValues ? (
-                  // Free-style text input for columns with many values
-                  <TextField
-                    label={col.replace(/-/g, " ").toUpperCase()}
-                    value={filters[col] || ""}
-                    onChange={(event) => handleFilterChange(event, col)}
-                    variant="outlined"
-                    size="small"
-                    placeholder={`Filter by ${col.replace(/-/g, " ")}...`}
-                    style={{
-                      fontSize: "14px"
-                    }}
-                    InputLabelProps={{
-                      style: { 
-                        fontSize: "12px",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        maxWidth: "calc(100% - 40px)"
-                      }
-                    }}
-                    InputProps={{
-                      style: { fontSize: "14px" }
-                    }}
-                  />
-                ) : (
-                  // Dropdown for columns with few values
-                  <>
-                    <InputLabel 
-                      id={`${col}-label`}
-                      shrink={true}
-                      style={{ 
-                        fontSize: "12px",
-                        fontWeight: "500",
-                        color: "#666",
-                        backgroundColor: "white",
-                        padding: "0 4px",
-                        transform: "translate(14px, -6px) scale(0.85)",
-                        transformOrigin: "top left"
-                      }}
-                    >
-                      {col.replace(/-/g, " ").toUpperCase()}
-                    </InputLabel>
-                    <Select
-                      labelId={`${col}-label`}
-                      value={filters[col] || ""}
-                      onChange={(event) => handleFilterChange(event, col)}
-                      label={col.replace(/-/g, " ").toUpperCase()}
-                      displayEmpty
-                      style={{
-                        fontSize: "14px",
-                        minHeight: "56px",
-                        padding: "8px 12px"
-                      }}
-                      inputProps={{
-                        style: {
-                          fontSize: "14px",
-                          padding: "8px 12px",
-                          minHeight: "40px"
-                        }
-                      }}
-                      MenuProps={{
-                        PaperProps: {
-                          style: {
-                            maxHeight: 300,
-                            minWidth: "200px",
-                            maxWidth: "400px"
-                          }
-                        },
-                        anchorOrigin: {
-                          vertical: "bottom",
-                          horizontal: "left"
-                        },
-                        transformOrigin: {
-                          vertical: "top",
-                          horizontal: "left"
-                        }
-                      }}
-                      renderValue={(selected) => {
-                        if (!selected) {
-                          return <span style={{ color: "#999", fontSize: "14px" }}>All {col.replace(/-/g, " ")}</span>;
-                        }
-                        return (
-                          <span 
-                            style={{ 
-                              fontSize: "14px",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              maxWidth: "100%",
-                              display: "block"
-                            }}
-                            title={selected}
-                          >
-                            {selected}
-                          </span>
-                        );
-                      }}
-                    >
-                      <MenuItem value="" style={{ fontSize: "14px", minHeight: "36px", padding: "8px 16px" }}>
-                        <em>All {col.replace(/-/g, " ")}</em>
-                      </MenuItem>
-                      {uniqueValues.map((value) => (
-                        <MenuItem 
-                          key={value} 
-                          value={value}
-                          style={{ 
-                            fontSize: "14px",
-                            minHeight: "36px",
-                            padding: "8px 16px",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            maxWidth: "100%"
-                          }}
-                          title={value}
-                        >
-                          {value}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </>
-                )}
+                {loading ? "Processing..." : "Upload File"}
+              </Button>
+            </label>
+            
+            {rawData.length > 0 && (
+              <Button
+                variant="outlined"
+                startIcon={<Download />}
+                onClick={exportToCSV}
+                disabled={selectedColumns.length === 0}
+              >
+                Export Filtered Data
+              </Button>
+            )}
+          </Box>
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          {rawData.length > 0 && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              Loaded {rawData.length} rows with {headers.length} columns
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {rawData.length > 0 && (
+        <>
+          {/* Column Selection */}
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+                <Typography variant="h6">
+                  Column Selection
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() => setShowFilters(!showFilters)}
+                  startIcon={showFilters ? <VisibilityOff /> : <Visibility />}
+                >
+                  {showFilters ? "Hide" : "Show"} Filters
+                </Button>
+              </Box>
+
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <Autocomplete
+                  multiple
+                  options={headers}
+                  getOptionLabel={(option) => option.label}
+                  value={headers.filter(h => selectedColumns.includes(h.id))}
+                  onChange={(event, newValue) => {
+                    setSelectedColumns(newValue.map(v => v.id));
+                  }}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option, index) => (
+                      <Chip
+                        variant="outlined"
+                        label={option.label}
+                        {...getTagProps({ index })}
+                        key={option.id}
+                      />
+                    ))
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Select columns to display"
+                      placeholder="Choose columns..."
+                    />
+                  )}
+                />
               </FormControl>
-            );
-          })}
-      </div>
-      <div style={{ height: "70vh", width: "100%", marginTop: "20px" }}>
-        <DataGrid
-          rows={filteredRows}
-          columns={columns.filter((col) => visibleColumns.includes(col.field))}
-          pageSize={10}
-        />
-      </div>
-      <PaymentsBreakdown />
-    </Container>
+
+              {selectedColumns.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Selected Columns ({selectedColumns.length}):
+                  </Typography>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                    {selectedColumnDetails.map((column) => (
+                      <Chip
+                        key={column.id}
+                        label={column.label}
+                        color="primary"
+                        onDelete={() => handleColumnSelect(column.id)}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Filters Section */}
+          {showFilters && selectedColumns.length > 0 && (
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+                  <Typography variant="h6">
+                    Filters
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={clearAllFilters}
+                    startIcon={<Clear />}
+                    disabled={Object.keys(columnFilters).length === 0 && !searchQuery}
+                  >
+                    Clear All
+                  </Button>
+                </Box>
+
+                {/* Search */}
+                <TextField
+                  fullWidth
+                  label="Search in selected columns"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  sx={{ mb: 2 }}
+                />
+
+                {/* Column Filters */}
+                <Grid container spacing={2}>
+                  {selectedColumnDetails.map((column) => {
+                    const uniqueValues = getColumnUniqueValues(column.field);
+                    const currentFilters = columnFilters[column.id] || [];
+
+                    return (
+                      <Grid item xs={12} md={6} lg={4} key={column.id}>
+                        <FormControl fullWidth>
+                          <Autocomplete
+                            multiple
+                            options={uniqueValues}
+                            value={currentFilters}
+                            onChange={(event, newValue) => {
+                              handleColumnFilterChange(column.id, newValue);
+                            }}
+                            renderTags={(value, getTagProps) =>
+                              value.map((option, index) => (
+                                <Chip
+                                  variant="outlined"
+                                  label={option}
+                                  size="small"
+                                  {...getTagProps({ index })}
+                                  key={option}
+                                />
+                              ))
+                            }
+                            renderInput={(params) => (
+                              <TextField
+                                {...params}
+                                label={column.label}
+                                placeholder={`Filter by ${column.label}...`}
+                                size="small"
+                              />
+                            )}
+                          />
+                          {currentFilters.length > 0 && (
+                            <Button
+                              size="small"
+                              onClick={() => removeColumnFilter(column.id)}
+                              sx={{ mt: 1 }}
+                            >
+                              Clear {column.label} filter
+                            </Button>
+                          )}
+                        </FormControl>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Data Table */}
+          {selectedColumns.length > 0 && (
+            <Card>
+              <CardContent>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+                  <Typography variant="h6">
+                    Data Table ({filteredData.length} rows)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Showing {paginatedData.length} of {filteredData.length} rows
+                  </Typography>
+                </Box>
+
+                <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
+                  <Table stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        {selectedColumnDetails.map((column) => (
+                          <TableCell key={column.id}>
+                            <TableSortLabel
+                              active={sortConfig.key === column.field}
+                              direction={sortConfig.key === column.field ? sortConfig.direction : "asc"}
+                              onClick={() => handleSort(column.field)}
+                            >
+                              {column.label}
+                            </TableSortLabel>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {paginatedData.map((row) => (
+                        <TableRow key={row.id} hover>
+                          {selectedColumnDetails.map((column) => (
+                            <TableCell key={column.id}>
+                              {row[column.field] || ""}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                <TablePagination
+                  rowsPerPageOptions={[10, 25, 50, 100]}
+                  component="div"
+                  count={filteredData.length}
+                  rowsPerPage={rowsPerPage}
+                  page={page}
+                  onPageChange={(event, newPage) => setPage(newPage)}
+                  onRowsPerPageChange={(event) => {
+                    setRowsPerPage(parseInt(event.target.value, 10));
+                    setPage(0);
+                  }}
+                />
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+
+      {loading && (
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
+          <CircularProgress />
+        </Box>
+      )}
+    </Box>
   );
 };
 
-export default FileFilterComponent;
+export default OrdersBreakdown;
