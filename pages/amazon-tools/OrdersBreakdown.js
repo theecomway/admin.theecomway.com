@@ -442,21 +442,78 @@ const OrdersBreakdown = () => {
     return headers.filter(h => selectedColumns.includes(h.id));
   }, [headers, selectedColumns]);
 
+  /**
+   * Get row color based on order status
+   * @param {Object} row - Table row data
+   * @returns {Object} Background color styles
+   * @pure - No side effects, returns color styles
+   */
+  const getRowColor = useCallback((row) => {
+    // Find order status column
+    const statusColumn = selectedColumnDetails.find(col => 
+      col.label.toLowerCase().includes('status') ||
+      col.label.toLowerCase().includes('order-status')
+    );
+    
+    if (!statusColumn) {
+      return { backgroundColor: 'transparent' };
+    }
+    
+    const status = String(row[statusColumn.field] || "").toLowerCase().trim();
+    
+    // Color coding based on order status
+    if (status.includes('shipped') && status.includes('delivered')) {
+      return { 
+        backgroundColor: '#e8f5e8', 
+        '&:hover': { backgroundColor: '#d4edda' }
+      };
+    } else if (status.includes('shipped')) {
+      return { 
+        backgroundColor: '#e3f2fd', 
+        '&:hover': { backgroundColor: '#bbdefb' }
+      };
+    } else if (status.includes('cancelled') || status.includes('canceled')) {
+      return { 
+        backgroundColor: '#ffebee', 
+        '&:hover': { backgroundColor: '#ffcdd2' }
+      };
+    } else if (status.includes('returned')) {
+      return { 
+        backgroundColor: '#fff3e0', 
+        '&:hover': { backgroundColor: '#ffe0b2' }
+      };
+    } else if (status.includes('pending')) {
+      return { 
+        backgroundColor: '#f3e5f5', 
+        '&:hover': { backgroundColor: '#e1bee7' }
+      };
+    } else {
+      return { 
+        backgroundColor: 'transparent',
+        '&:hover': { backgroundColor: '#f5f5f5' }
+      };
+    }
+  }, [selectedColumnDetails]);
+
   return (
     <Box sx={{ p: 3, maxWidth: "100%" }}>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h3" gutterBottom sx={{ fontWeight: 600, mb: 1 }}>
         Orders Breakdown
       </Typography>
       
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 4, fontSize: '1.1rem' }}>
         Upload your order file (Excel/TXT) to analyze and filter data by columns and values. 
         By default, all rows are shown with Order ID and Order Status columns selected.
       </Typography>
 
       {/* File Upload Section */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+      <Card sx={{ mb: 4, boxShadow: 2 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
+            📁 File Upload
+          </Typography>
+          
+          <Box sx={{ display: "flex", alignItems: "center", gap: 3, mb: 3 }}>
             <input
               accept=".txt,.xlsx,.xls"
               style={{ display: "none" }}
@@ -470,6 +527,14 @@ const OrdersBreakdown = () => {
                 component="span"
                 startIcon={<Upload />}
                 disabled={loading}
+                size="large"
+                sx={{ 
+                  py: 1.5, 
+                  px: 3, 
+                  fontSize: '1rem',
+                  minWidth: 160,
+                  borderRadius: 2
+                }}
               >
                 {loading ? "Processing..." : "Upload File"}
               </Button>
@@ -481,6 +546,14 @@ const OrdersBreakdown = () => {
                 startIcon={<Download />}
                 onClick={exportToCSV}
                 disabled={selectedColumns.length === 0}
+                size="large"
+                sx={{ 
+                  py: 1.5, 
+                  px: 3, 
+                  fontSize: '1rem',
+                  minWidth: 180,
+                  borderRadius: 2
+                }}
               >
                 Export Filtered Data
               </Button>
@@ -488,14 +561,14 @@ const OrdersBreakdown = () => {
           </Box>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert severity="error" sx={{ mb: 2, fontSize: '1rem', py: 1.5 }}>
               {error}
             </Alert>
           )}
 
           {rawData.length > 0 && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Loaded {rawData.length} rows with {headers.length} columns
+            <Alert severity="success" sx={{ mb: 2, fontSize: '1rem', py: 1.5 }}>
+              ✅ Loaded {rawData.length} rows with {headers.length} columns
             </Alert>
           )}
         </CardContent>
@@ -504,22 +577,30 @@ const OrdersBreakdown = () => {
       {rawData.length > 0 && (
         <>
           {/* Column Selection */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
-                <Typography variant="h6">
-                  Column Selection
+          <Card sx={{ mb: 4, boxShadow: 2 }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 3, mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  📊 Column Selection
                 </Typography>
                 <Button
-                  size="small"
+                  size="medium"
+                  variant="outlined"
                   onClick={() => setShowFilters(!showFilters)}
                   startIcon={showFilters ? <VisibilityOff /> : <Visibility />}
+                  sx={{ 
+                    py: 1, 
+                    px: 2, 
+                    fontSize: '0.95rem',
+                    borderRadius: 2,
+                    fontWeight: 600
+                  }}
                 >
-                  {showFilters ? "Hide" : "Show"} Filters
+                  {showFilters ? "Hide Filters" : "Show Filters"}
                 </Button>
               </Box>
 
-              <FormControl fullWidth sx={{ mb: 2 }}>
+              <FormControl fullWidth sx={{ mb: 3 }}>
                 <Autocomplete
                   multiple
                   options={headers}
@@ -531,10 +612,23 @@ const OrdersBreakdown = () => {
                   renderTags={(value, getTagProps) =>
                     value.map((option, index) => (
                       <Chip
-                        variant="outlined"
+                        variant="filled"
                         label={option.label}
                         {...getTagProps({ index })}
                         key={option.id}
+                        sx={{ 
+                          fontSize: '0.9rem',
+                          py: 1.5,
+                          px: 1,
+                          height: 'auto',
+                          '& .MuiChip-label': { px: 1.5, py: 0.5 },
+                          backgroundColor: 'primary.light',
+                          color: 'primary.contrastText',
+                          fontWeight: 600,
+                          '&:hover': {
+                            backgroundColor: 'primary.main'
+                          }
+                        }}
                       />
                     ))
                   }
@@ -543,140 +637,179 @@ const OrdersBreakdown = () => {
                       {...params}
                       label="Select columns to display"
                       placeholder="Choose columns..."
+                      sx={{ 
+                        '& .MuiInputBase-root': { 
+                          minHeight: 56,
+                          fontSize: '1rem'
+                        },
+                        '& .MuiInputLabel-root': {
+                          fontSize: '1rem',
+                          fontWeight: 600
+                        }
+                      }}
                     />
                   )}
                 />
               </FormControl>
 
-              {selectedColumns.length > 0 && (
-                <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Selected Columns ({selectedColumns.length}):
-                  </Typography>
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-                    {selectedColumnDetails.map((column) => (
-                      <Chip
-                        key={column.id}
-                        label={column.label}
-                        color="primary"
-                        onDelete={() => handleColumnSelect(column.id)}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )}
             </CardContent>
           </Card>
 
-          {/* Filters Section */}
-          {showFilters && selectedColumns.length > 0 && (
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
-                  <Typography variant="h6">
-                    Filters
-                  </Typography>
-                  <Button
-                    size="small"
-                    onClick={clearAllFilters}
-                    startIcon={<Clear />}
-                    disabled={Object.keys(columnFilters).length === 0 && !searchQuery}
-                  >
-                    Clear All
-                  </Button>
-                </Box>
-
-                {/* Search */}
-                <TextField
-                  fullWidth
-                  label="Search in selected columns"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  sx={{ mb: 2 }}
-                />
-
-                {/* Column Filters */}
-                <Grid container spacing={2}>
-                  {selectedColumnDetails.map((column) => {
-                    const uniqueValues = getColumnUniqueValues(column.field);
-                    const currentFilters = columnFilters[column.id] || [];
-
-                    return (
-                      <Grid item xs={12} md={6} lg={4} key={column.id}>
-                        <FormControl fullWidth>
-                          <Autocomplete
-                            multiple
-                            options={uniqueValues}
-                            value={currentFilters}
-                            onChange={(event, newValue) => {
-                              handleColumnFilterChange(column.id, newValue);
-                            }}
-                            renderTags={(value, getTagProps) =>
-                              value.map((option, index) => (
-                                <Chip
-                                  variant="outlined"
-                                  label={option}
-                                  size="small"
-                                  {...getTagProps({ index })}
-                                  key={option}
-                                />
-                              ))
-                            }
-                            renderInput={(params) => (
-                              <TextField
-                                {...params}
-                                label={column.label}
-                                placeholder={`Filter by ${column.label}...`}
-                                size="small"
-                              />
-                            )}
-                          />
-                          {currentFilters.length > 0 && (
-                            <Button
-                              size="small"
-                              onClick={() => removeColumnFilter(column.id)}
-                              sx={{ mt: 1 }}
-                            >
-                              Clear {column.label} filter
-                            </Button>
-                          )}
-                        </FormControl>
-                      </Grid>
-                    );
-                  })}
-                </Grid>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Data Table */}
           {selectedColumns.length > 0 && (
-            <Card>
-              <CardContent>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-                  <Typography variant="h6">
-                    Data Table ({filteredData.length} rows)
+            <Card sx={{ boxShadow: 2 }}>
+              <CardContent sx={{ p: 3 }}>
+                {/* Filters Section - Right above table */}
+                {showFilters && (
+                  <Box sx={{ mb: 4, p: 3, backgroundColor: 'grey.50', borderRadius: 2, border: '1px solid', borderColor: 'grey.200' }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 3, mb: 3 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        🔍 Filters
+                      </Typography>
+                      <Button
+                        size="medium"
+                        onClick={clearAllFilters}
+                        startIcon={<Clear />}
+                        disabled={Object.keys(columnFilters).length === 0 && !searchQuery}
+                        sx={{ 
+                          py: 1, 
+                          px: 2, 
+                          fontSize: '0.95rem',
+                          borderRadius: 2
+                        }}
+                      >
+                        Clear All
+                      </Button>
+                    </Box>
+
+                    {/* Search */}
+                    <TextField
+                      fullWidth
+                      label="Search in selected columns"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      sx={{ 
+                        mb: 3,
+                        '& .MuiInputBase-root': { 
+                          minHeight: 56,
+                          fontSize: '1rem'
+                        }
+                      }}
+                    />
+
+                    {/* Column Filters */}
+                    <Grid container spacing={3}>
+                      {selectedColumnDetails.map((column) => {
+                        const uniqueValues = getColumnUniqueValues(column.field);
+                        const currentFilters = columnFilters[column.id] || [];
+
+                        return (
+                          <Grid item xs={12} md={6} lg={4} key={column.id}>
+                            <FormControl fullWidth>
+                              <Autocomplete
+                                multiple
+                                options={uniqueValues}
+                                value={currentFilters}
+                                onChange={(event, newValue) => {
+                                  handleColumnFilterChange(column.id, newValue);
+                                }}
+                                renderTags={(value, getTagProps) =>
+                                  value.map((option, index) => (
+                                    <Chip
+                                      variant="outlined"
+                                      label={option}
+                                      size="medium"
+                                      {...getTagProps({ index })}
+                                      key={option}
+                                      sx={{ 
+                                        fontSize: '0.85rem',
+                                        py: 1.5,
+                                        '& .MuiChip-label': { px: 1 }
+                                      }}
+                                    />
+                                  ))
+                                }
+                                renderInput={(params) => (
+                                  <TextField
+                                    {...params}
+                                    label={column.label}
+                                    placeholder={`Filter by ${column.label}...`}
+                                    sx={{ 
+                                      '& .MuiInputBase-root': { 
+                                        minHeight: 56,
+                                        fontSize: '1rem'
+                                      }
+                                    }}
+                                  />
+                                )}
+                              />
+                              {currentFilters.length > 0 && (
+                                <Button
+                                  size="small"
+                                  onClick={() => removeColumnFilter(column.id)}
+                                  sx={{ 
+                                    mt: 2,
+                                    fontSize: '0.85rem',
+                                    py: 0.5,
+                                    px: 1.5
+                                  }}
+                                >
+                                  Clear {column.label} filter
+                                </Button>
+                              )}
+                            </FormControl>
+                          </Grid>
+                        );
+                      })}
+                    </Grid>
+                  </Box>
+                )}
+
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem' }}>
+                    📋 Data Table ({filteredData.length} rows)
                     {Object.keys(columnFilters).length === 0 && !searchQuery && (
-                      <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                      <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 2, fontSize: '0.9rem' }}>
                         (All rows shown)
                       </Typography>
                     )}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body1" color="text.secondary" sx={{ fontSize: '0.95rem' }}>
                     Showing {paginatedData.length} of {filteredData.length} rows
                   </Typography>
                 </Box>
 
-                <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
+                <TableContainer component={Paper} sx={{ maxHeight: 600, borderRadius: 3, boxShadow: 2 }}>
                   <Table stickyHeader>
                     <TableHead>
                       <TableRow>
                         {selectedColumnDetails.map((column) => (
-                          <TableCell key={column.id}>
+                          <TableCell 
+                            key={column.id}
+                            sx={{ 
+                              fontSize: '1.1rem',
+                              fontWeight: 700,
+                              py: 3,
+                              px: 2,
+                              backgroundColor: 'primary.main',
+                              color: 'primary.contrastText',
+                              borderBottom: '2px solid',
+                              borderBottomColor: 'primary.dark'
+                            }}
+                          >
                             <TableSortLabel
                               active={sortConfig.key === column.field}
                               direction={sortConfig.key === column.field ? sortConfig.direction : "asc"}
                               onClick={() => handleSort(column.field)}
+                              sx={{ 
+                                fontSize: '1.1rem', 
+                                fontWeight: 700,
+                                color: 'primary.contrastText',
+                                '&:hover': { color: 'primary.contrastText' },
+                                '&.Mui-active': { color: 'primary.contrastText' },
+                                '& .MuiTableSortLabel-icon': { color: 'primary.contrastText' }
+                              }}
                             >
                               {column.label}
                             </TableSortLabel>
@@ -685,10 +818,24 @@ const OrdersBreakdown = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {paginatedData.map((row) => (
-                        <TableRow key={row.id} hover>
+                      {paginatedData.map((row, index) => (
+                        <TableRow 
+                          key={row.id} 
+                          hover
+                          sx={getRowColor(row)}
+                        >
                           {selectedColumnDetails.map((column) => (
-                            <TableCell key={column.id}>
+                            <TableCell 
+                              key={column.id}
+                              sx={{ 
+                                fontSize: '1rem',
+                                py: 2,
+                                px: 2,
+                                fontWeight: 500,
+                                borderBottom: '1px solid',
+                                borderBottomColor: 'grey.200'
+                              }}
+                            >
                               {row[column.field] || ""}
                             </TableCell>
                           ))}
@@ -709,6 +856,11 @@ const OrdersBreakdown = () => {
                     setRowsPerPage(parseInt(event.target.value, 10));
                     setPage(0);
                   }}
+                  sx={{ 
+                    '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+                      fontSize: '0.95rem'
+                    }
+                  }}
                 />
               </CardContent>
             </Card>
@@ -717,8 +869,13 @@ const OrdersBreakdown = () => {
       )}
 
       {loading && (
-        <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
-          <CircularProgress />
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 4, py: 4 }}>
+          <Box sx={{ textAlign: "center" }}>
+            <CircularProgress size={60} sx={{ mb: 2 }} />
+            <Typography variant="h6" color="text.secondary">
+              Processing your file...
+            </Typography>
+          </Box>
         </Box>
       )}
     </Box>
