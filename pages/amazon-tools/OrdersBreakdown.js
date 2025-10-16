@@ -29,6 +29,7 @@ import {
   TablePagination,
   TableSortLabel,
 } from "@mui/material";
+// Simple date input components to avoid ES module issues
 import {
   Upload,
   X,
@@ -63,6 +64,7 @@ const OrdersBreakdown = () => {
   const [selectedColumns, setSelectedColumns] = useState([]);
   const [columnFilters, setColumnFilters] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [dateRange, setDateRange] = useState({ start: null, end: null });
 
   // Table state
   const [page, setPage] = useState(0);
@@ -259,6 +261,15 @@ const OrdersBreakdown = () => {
   }, [parseFile]);
 
   /**
+   * Get selected column details
+   * @returns {Array} Selected column objects
+   * @pure - No side effects, returns column data
+   */
+  const selectedColumnDetails = useMemo(() => {
+    return headers.filter(h => selectedColumns.includes(h.id));
+  }, [headers, selectedColumns]);
+
+  /**
    * Get unique values for a specific column
    * @param {string} columnField - Column field identifier
    * @returns {Array} Array of unique values
@@ -310,6 +321,7 @@ const OrdersBreakdown = () => {
   const clearAllFilters = useCallback(() => {
     setColumnFilters({});
     setSearchQuery("");
+    setDateRange({ start: null, end: null });
     setPage(0);
   }, []);
 
@@ -326,6 +338,66 @@ const OrdersBreakdown = () => {
   }, []);
 
   /**
+   * Format date for display
+   * @param {string} dateString - ISO date string
+   * @returns {string} Formatted date string
+   * @pure - No side effects, returns formatted string
+   */
+  const formatDate = useCallback((dateString) => {
+    if (!dateString) return "";
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return dateString;
+    }
+  }, []);
+
+  /**
+   * Check if date is within range
+   * @param {string} dateString - Date string to check
+   * @param {Date} startDate - Start date
+   * @param {Date} endDate - End date
+   * @returns {boolean} Whether date is in range
+   * @pure - No side effects, returns boolean
+   */
+  const isDateInRange = useCallback((dateString, startDate, endDate) => {
+    if (!startDate && !endDate) return true;
+    if (!dateString) return false;
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return false;
+      
+      // Set time to start/end of day for proper comparison
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const startOnly = startDate ? new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()) : null;
+      const endOnly = endDate ? new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()) : null;
+      
+      if (startOnly && endOnly) {
+        return dateOnly >= startOnly && dateOnly <= endOnly;
+      } else if (startOnly) {
+        return dateOnly >= startOnly;
+      } else if (endOnly) {
+        return dateOnly <= endOnly;
+      }
+      
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }, []);
+
+  /**
    * Filter data based on selected columns and filters
    * @returns {Array} Filtered and processed data
    * @pure - No side effects, returns filtered data
@@ -334,7 +406,7 @@ const OrdersBreakdown = () => {
     let filtered = rawData;
 
     // Only apply filters if any are actually set
-    const hasFilters = Object.keys(columnFilters).length > 0 || searchQuery.trim();
+    const hasFilters = Object.keys(columnFilters).length > 0 || searchQuery.trim() || dateRange.start || dateRange.end;
 
     if (hasFilters) {
       // Apply column filters
@@ -345,6 +417,20 @@ const OrdersBreakdown = () => {
           );
         }
       });
+
+      // Apply date range filter
+      if (dateRange.start || dateRange.end) {
+        const purchaseDateColumn = selectedColumnDetails.find(col => 
+          col.label.toLowerCase().includes('purchase-date') ||
+          col.label.toLowerCase().includes('purchase_date')
+        );
+        
+        if (purchaseDateColumn) {
+          filtered = filtered.filter(row => 
+            isDateInRange(row[purchaseDateColumn.field], dateRange.start, dateRange.end)
+          );
+        }
+      }
 
       // Apply search query
       if (searchQuery.trim()) {
@@ -361,7 +447,7 @@ const OrdersBreakdown = () => {
     }
 
     return filtered;
-  }, [rawData, columnFilters, searchQuery, selectedColumns, headers]);
+  }, [rawData, columnFilters, searchQuery, selectedColumns, headers, dateRange, selectedColumnDetails, isDateInRange]);
 
   /**
    * Sort data based on sort configuration
@@ -432,15 +518,6 @@ const OrdersBreakdown = () => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }, [filteredData, headers, selectedColumns]);
-
-  /**
-   * Get selected column details
-   * @returns {Array} Selected column objects
-   * @pure - No side effects, returns column data
-   */
-  const selectedColumnDetails = useMemo(() => {
-    return headers.filter(h => selectedColumns.includes(h.id));
-  }, [headers, selectedColumns]);
 
   /**
    * Get row color based on order status
@@ -698,6 +775,61 @@ const OrdersBreakdown = () => {
                       }}
                     />
 
+                    {/* Date Range Filter */}
+                    {selectedColumnDetails.some(col => 
+                      col.label.toLowerCase().includes('purchase-date') ||
+                      col.label.toLowerCase().includes('purchase_date')
+                    ) && (
+                      <Box sx={{ mb: 3, p: 2, backgroundColor: 'white', borderRadius: 2, border: '1px solid', borderColor: 'grey.300' }}>
+                        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                          📅 Purchase Date Range
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              label="Start Date"
+                              type="date"
+                              value={dateRange.start ? dateRange.start.toISOString().split('T')[0] : ''}
+                              onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value ? new Date(e.target.value) : null }))}
+                              InputLabelProps={{ shrink: true }}
+                              fullWidth
+                              sx={{ 
+                                '& .MuiInputBase-root': { 
+                                  minHeight: 56,
+                                  fontSize: '1rem'
+                                }
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              label="End Date"
+                              type="date"
+                              value={dateRange.end ? dateRange.end.toISOString().split('T')[0] : ''}
+                              onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value ? new Date(e.target.value) : null }))}
+                              InputLabelProps={{ shrink: true }}
+                              fullWidth
+                              sx={{ 
+                                '& .MuiInputBase-root': { 
+                                  minHeight: 56,
+                                  fontSize: '1rem'
+                                }
+                              }}
+                            />
+                          </Grid>
+                        </Grid>
+                        {(dateRange.start || dateRange.end) && (
+                          <Button
+                            size="small"
+                            onClick={() => setDateRange({ start: null, end: null })}
+                            sx={{ mt: 2, fontSize: '0.85rem' }}
+                          >
+                            Clear Date Range
+                          </Button>
+                        )}
+                      </Box>
+                    )}
+
                     {/* Column Filters */}
                     <Grid container spacing={3}>
                       {selectedColumnDetails.map((column) => {
@@ -836,7 +968,11 @@ const OrdersBreakdown = () => {
                                 borderBottomColor: 'grey.200'
                               }}
                             >
-                              {row[column.field] || ""}
+                              {(column.label.toLowerCase().includes('purchase-date') || 
+                                column.label.toLowerCase().includes('purchase_date')) 
+                                ? formatDate(row[column.field]) 
+                                : (row[column.field] || "")
+                              }
                             </TableCell>
                           ))}
                         </TableRow>
@@ -878,7 +1014,7 @@ const OrdersBreakdown = () => {
           </Box>
         </Box>
       )}
-    </Box>
+      </Box>
   );
 };
 
