@@ -98,3 +98,5 @@ firestore-debug.log
 # Temporary folders
 tmp/
 temp/
+/.next-clean
+/.next-dev
