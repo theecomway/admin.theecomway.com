@@ -234,7 +234,23 @@ const OrdersBreakdown = () => {
     if (parsedHeaders.length > 0 && data.length > 0) {
       setHeaders(parsedHeaders);
       setRawData(data);
-      setSelectedColumns([]);
+      
+      // Auto-select order-id and order-status columns if they exist
+      const orderIdColumn = parsedHeaders.find(h => 
+        h.label.toLowerCase().includes('order-id') || 
+        h.label.toLowerCase().includes('amazon-order-id') ||
+        h.label.toLowerCase().includes('merchant-order-id')
+      );
+      const orderStatusColumn = parsedHeaders.find(h => 
+        h.label.toLowerCase().includes('order-status') ||
+        h.label.toLowerCase().includes('status')
+      );
+      
+      const defaultColumns = [];
+      if (orderIdColumn) defaultColumns.push(orderIdColumn.id);
+      if (orderStatusColumn) defaultColumns.push(orderStatusColumn.id);
+      
+      setSelectedColumns(defaultColumns);
       setColumnFilters({});
       setSearchQuery("");
       setPage(0);
@@ -317,26 +333,31 @@ const OrdersBreakdown = () => {
   const filteredData = useMemo(() => {
     let filtered = rawData;
 
-    // Apply column filters
-    Object.entries(columnFilters).forEach(([columnId, selectedValues]) => {
-      if (selectedValues.length > 0) {
-        filtered = filtered.filter(row => 
-          selectedValues.includes(String(row[columnId]).trim())
-        );
-      }
-    });
+    // Only apply filters if any are actually set
+    const hasFilters = Object.keys(columnFilters).length > 0 || searchQuery.trim();
 
-    // Apply search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(row => {
-        return selectedColumns.some(columnId => {
-          const column = headers.find(h => h.id === columnId);
-          if (!column) return false;
-          const value = String(row[column.field] || "").toLowerCase();
-          return value.includes(query);
-        });
+    if (hasFilters) {
+      // Apply column filters
+      Object.entries(columnFilters).forEach(([columnId, selectedValues]) => {
+        if (selectedValues.length > 0) {
+          filtered = filtered.filter(row => 
+            selectedValues.includes(String(row[columnId]).trim())
+          );
+        }
       });
+
+      // Apply search query
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.filter(row => {
+          return selectedColumns.some(columnId => {
+            const column = headers.find(h => h.id === columnId);
+            if (!column) return false;
+            const value = String(row[column.field] || "").toLowerCase();
+            return value.includes(query);
+          });
+        });
+      }
     }
 
     return filtered;
@@ -428,7 +449,8 @@ const OrdersBreakdown = () => {
       </Typography>
       
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Upload your order file (Excel/TXT) to analyze and filter data by columns and values.
+        Upload your order file (Excel/TXT) to analyze and filter data by columns and values. 
+        By default, all rows are shown with Order ID and Order Status columns selected.
       </Typography>
 
       {/* File Upload Section */}
@@ -634,6 +656,11 @@ const OrdersBreakdown = () => {
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                   <Typography variant="h6">
                     Data Table ({filteredData.length} rows)
+                    {Object.keys(columnFilters).length === 0 && !searchQuery && (
+                      <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                        (All rows shown)
+                      </Typography>
+                    )}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Showing {paginatedData.length} of {filteredData.length} rows
