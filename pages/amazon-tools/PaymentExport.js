@@ -29,9 +29,11 @@ import {
 const PaymentExport = () => {
   const [data, setData] = useState([]);
   const [filtered, setFiltered] = useState([]);
+  const [orderData, setOrderData] = useState([]);
   const [monthFilter, setMonthFilter] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [orderLoading, setOrderLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
 
   // Helper function to parse comma-separated numbers
@@ -93,6 +95,69 @@ const PaymentExport = () => {
     });
   }, []);
 
+  const parseOrderFile = useCallback(async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = e.target.result;
+          const lines = text.split('\n').filter(line => line.trim());
+          
+          if (lines.length === 0) {
+            reject(new Error("Order file is empty"));
+            return;
+          }
+
+          // Check if first line contains amazon-order-id header
+          const firstLine = lines[0].toLowerCase();
+          if (!firstLine.includes('amazon-order-id')) {
+            reject(new Error("Order file must contain 'amazon-order-id' header"));
+            return;
+          }
+
+          // Find the header row and extract order IDs
+          let headerIndex = -1;
+          let orderIdColumnIndex = -1;
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].toLowerCase();
+            if (line.includes('amazon-order-id')) {
+              headerIndex = i;
+              const headers = lines[i].split('\t').map(h => h.trim().toLowerCase());
+              orderIdColumnIndex = headers.findIndex(h => h.includes('amazon-order-id'));
+              break;
+            }
+          }
+
+          if (headerIndex === -1 || orderIdColumnIndex === -1) {
+            reject(new Error("Could not find 'amazon-order-id' column in order file"));
+            return;
+          }
+
+          // Extract order IDs from data rows
+          const orderIds = [];
+          for (let i = headerIndex + 1; i < lines.length; i++) {
+            const columns = lines[i].split('\t');
+            if (columns[orderIdColumnIndex] && columns[orderIdColumnIndex].trim()) {
+              orderIds.push(columns[orderIdColumnIndex].trim());
+            }
+          }
+
+          if (orderIds.length === 0) {
+            reject(new Error("No order IDs found in the file"));
+            return;
+          }
+
+          resolve(orderIds);
+        } catch (error) {
+          reject(new Error(`Error parsing order file: ${error.message}`));
+        }
+      };
+      reader.onerror = () => reject(new Error("Error reading file"));
+      reader.readAsText(file);
+    });
+  }, []);
+
   const handleCSVUpload = useCallback(async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -124,6 +189,23 @@ const PaymentExport = () => {
     }
   }, [parseCSVWithFallback]);
 
+  const handleOrderFileUpload = useCallback(async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setOrderLoading(true);
+    setError("");
+
+    try {
+      const orderIds = await parseOrderFile(file);
+      setOrderData(orderIds);
+    } catch (err) {
+      setError(`Error parsing order file: ${err.message}`);
+    } finally {
+      setOrderLoading(false);
+    }
+  }, [parseOrderFile]);
+
   const handleMonthFilter = useCallback((month) => {
     setMonthFilter(month);
     if (!month) {
@@ -149,12 +231,20 @@ const PaymentExport = () => {
 
   // Process data for export
   const processedData = useMemo(() => {
-    if (!filtered.length) return { consolidatedOrders: [], otherPayments: [], transferPayments: [] };
+    if (!filtered.length) return { 
+      consolidatedOrders: [], 
+      otherPayments: [], 
+      transferPayments: [], 
+      nilPaymentOrders: [],
+      unfilteredOrders: []
+    };
 
     const consolidatedOrders = [];
     const otherPayments = [];
     const consolidatedMap = new Map();
+    const allPaymentOrderIds = new Set();
 
+    // First pass: collect all payment data
     filtered.forEach(row => {
       const orderId = row.orderId || row['order id'] || row['Order ID'] || '';
       const total = parseNumber(row.total);
@@ -164,6 +254,8 @@ const PaymentExport = () => {
       
       // Check if orderId matches the pattern xxx-xxxxxxx-xxxxxxx
       if (orderId && orderId.match(/^\d{3}-\d{7}-\d{7}$/)) {
+        allPaymentOrderIds.add(orderId);
+        
         // Consolidated order
         if (consolidatedMap.has(orderId)) {
           consolidatedMap.get(orderId).total += total;
@@ -186,18 +278,44 @@ const PaymentExport = () => {
     });
 
     // Convert consolidated map to array
-    consolidatedOrders.push(...Array.from(consolidatedMap.values()));
+    const allConsolidatedOrders = Array.from(consolidatedMap.values());
 
-    // Split other payments into transfers and non-transfers
-    const transferPayments = otherPayments.filter(item => (item.type || '').toLowerCase() === 'transfer');
-    const otherNonTransferPayments = otherPayments.filter(item => (item.type || '').toLowerCase() !== 'transfer');
-
-    // Return non-transfer others as otherPayments
-    return { consolidatedOrders, otherPayments: otherNonTransferPayments, transferPayments };
-  }, [filtered]);
+    // Filter consolidated orders based on order file if available
+    if (orderData.length > 0) {
+      const orderSet = new Set(orderData);
+      
+      // Only include consolidated orders that are in the order file
+      consolidatedOrders.push(...allConsolidatedOrders.filter(order => orderSet.has(order.orderId)));
+      
+      // Find orders in order file but not in payments (nil payment orders)
+      const nilPaymentOrders = orderData.filter(orderId => !allPaymentOrderIds.has(orderId));
+      
+      // Find payment orders not in order file (unfiltered orders)
+      const unfilteredOrders = allConsolidatedOrders.filter(order => !orderSet.has(order.orderId));
+      
+      return {
+        consolidatedOrders,
+        otherPayments: otherPayments.filter(item => (item.type || '').toLowerCase() !== 'transfer'),
+        transferPayments: otherPayments.filter(item => (item.type || '').toLowerCase() === 'transfer'),
+        nilPaymentOrders: nilPaymentOrders.map(orderId => ({ orderId, total: 0 })),
+        unfilteredOrders
+      };
+    } else {
+      // No order file uploaded, use all consolidated orders
+      consolidatedOrders.push(...allConsolidatedOrders);
+      
+      return {
+        consolidatedOrders,
+        otherPayments: otherPayments.filter(item => (item.type || '').toLowerCase() !== 'transfer'),
+        transferPayments: otherPayments.filter(item => (item.type || '').toLowerCase() === 'transfer'),
+        nilPaymentOrders: [],
+        unfilteredOrders: []
+      };
+    }
+  }, [filtered, orderData, parseNumber]);
 
   const handleExport = useCallback(async () => {
-    if (!processedData.consolidatedOrders.length && !processedData.otherPayments.length) {
+    if (!processedData.consolidatedOrders.length && !processedData.otherPayments.length && !processedData.nilPaymentOrders.length && !processedData.unfilteredOrders.length) {
       setError("No data to export");
       return;
     }
@@ -209,7 +327,7 @@ const PaymentExport = () => {
       // Create a new workbook
       const workbook = XLSX.utils.book_new();
 
-      // Tab 1: Consolidated Orders
+      // Tab 1: Consolidated Orders (filtered by order file if available)
       if (processedData.consolidatedOrders.length > 0) {
         const consolidatedData = processedData.consolidatedOrders.map(item => ({
           'Order ID': item.orderId,
@@ -244,6 +362,30 @@ const PaymentExport = () => {
         XLSX.utils.book_append_sheet(workbook, transfersSheet, 'Transfers');
       }
 
+      // Tab 4: Nil Payment Orders (orders in order file but not in payments)
+      if (processedData.nilPaymentOrders.length > 0) {
+        const nilData = processedData.nilPaymentOrders.map(item => ({
+          'Order ID': item.orderId,
+          'Total (₹)': item.total.toFixed(2),
+          'Status': 'No Payment Found'
+        }));
+
+        const nilSheet = XLSX.utils.json_to_sheet(nilData);
+        XLSX.utils.book_append_sheet(workbook, nilSheet, 'Nil Payment Orders');
+      }
+
+      // Tab 5: Unfiltered Orders (payment orders not in order file)
+      if (processedData.unfilteredOrders.length > 0) {
+        const unfilteredData = processedData.unfilteredOrders.map(item => ({
+          'Order ID': item.orderId,
+          'Total (₹)': item.total.toFixed(2),
+          'Status': 'Not in Order File'
+        }));
+
+        const unfilteredSheet = XLSX.utils.json_to_sheet(unfilteredData);
+        XLSX.utils.book_append_sheet(workbook, unfilteredSheet, 'Unfiltered Orders');
+      }
+
       // Generate filename with current date
       const now = new Date();
       const dateStr = now.toISOString().split('T')[0];
@@ -271,6 +413,15 @@ const PaymentExport = () => {
     return total;
   }, [processedData.otherPayments]);
 
+  const totalNilPayment = useMemo(() => {
+    return processedData.nilPaymentOrders.length;
+  }, [processedData.nilPaymentOrders]);
+
+  const totalUnfiltered = useMemo(() => {
+    const total = processedData.unfilteredOrders.reduce((sum, item) => sum + item.total, 0);
+    return total;
+  }, [processedData.unfilteredOrders]);
+
   return (
     <Box sx={{ p: 3, bgcolor: 'grey.50', minHeight: '100vh' }}>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
@@ -278,7 +429,7 @@ const PaymentExport = () => {
       </Typography>
       
       <Alert severity="info" sx={{ mb: 3 }}>
-        <strong>Note:</strong> This tool automatically skips the first 11 rows and uses row 12 as the header row, then processes data starting from row 13.
+        <strong>Note:</strong> This tool automatically skips the first 11 rows and uses row 12 as the header row, then processes data starting from row 13. Upload an order file (.txt) with 'amazon-order-id' header to filter consolidated orders.
       </Alert>
 
       {error && (
@@ -309,6 +460,22 @@ const PaymentExport = () => {
                 hidden
               />
             </Button>
+
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<UploadIcon />}
+              disabled={orderLoading}
+              sx={{ minWidth: 150 }}
+            >
+              Upload Orders (.txt)
+              <input
+                type="file"
+                accept=".txt"
+                onChange={handleOrderFileUpload}
+                hidden
+              />
+            </Button>
             
             <TextField
               type="month"
@@ -320,19 +487,20 @@ const PaymentExport = () => {
               sx={{ minWidth: 200 }}
             />
             
-            {data.length > 0 && (
+            {(data.length > 0 || orderData.length > 0) && (
               <Button
                 variant="outlined"
                 color="error"
                 onClick={() => {
                   setData([]);
                   setFiltered([]);
+                  setOrderData([]);
                   setMonthFilter("");
                   setError("");
                 }}
-                disabled={loading || processing}
+                disabled={loading || orderLoading || processing}
               >
-                Clear Data
+                Clear All
               </Button>
             )}
             
@@ -340,7 +508,16 @@ const PaymentExport = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <CircularProgress size={20} />
                 <Typography variant="body2" color="primary">
-                  Processing...
+                  Processing CSV...
+                </Typography>
+              </Box>
+            )}
+
+            {orderLoading && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={20} />
+                <Typography variant="body2" color="primary">
+                  Processing Orders...
                 </Typography>
               </Box>
             )}
@@ -351,7 +528,7 @@ const PaymentExport = () => {
       {/* Summary Cards */}
       {data.length > 0 && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={6} lg={3}>
             <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -372,7 +549,7 @@ const PaymentExport = () => {
             </Card>
           </Grid>
           
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={6} lg={3}>
             <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -392,6 +569,52 @@ const PaymentExport = () => {
               </CardContent>
             </Card>
           </Grid>
+
+          {orderData.length > 0 && (
+            <>
+              <Grid item xs={12} md={6} lg={3}>
+                <Card sx={{ background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)', color: 'white' }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <AssessmentIcon sx={{ fontSize: 40 }} />
+                      <Box>
+                        <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
+                          {totalNilPayment}
+                        </Typography>
+                        <Typography variant="body1" sx={{ opacity: 0.9 }}>
+                          Nil Payment Orders
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 1, opacity: 0.8 }}>
+                          In order file, no payment
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={6} lg={3}>
+                <Card sx={{ background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', color: 'white' }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <TrendingUpIcon sx={{ fontSize: 40 }} />
+                      <Box>
+                        <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
+                          {processedData.unfilteredOrders.length}
+                        </Typography>
+                        <Typography variant="body1" sx={{ opacity: 0.9 }}>
+                          Unfiltered Orders
+                        </Typography>
+                        <Typography variant="h6" sx={{ mt: 1 }}>
+                          ₹{totalUnfiltered.toFixed(2)}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </>
+          )}
         </Grid>
       )}
 
@@ -405,10 +628,16 @@ const PaymentExport = () => {
             </Typography>
             
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              The exported Excel file will contain three tabs:
-              <br />• <strong>Consolidated Orders:</strong> Order IDs matching pattern xxx-xxxxxxx-xxxxxxx with their totals
+              The exported Excel file will contain up to five tabs:
+              <br />• <strong>Consolidated Orders:</strong> Order IDs matching pattern xxx-xxxxxxx-xxxxxxx with their totals (filtered by order file if uploaded)
               <br />• <strong>Other Payments:</strong> All other payment records with month, key+description, and total
               <br />• <strong>Transfers:</strong> Only records where Type = Transfer, with month, key+description, and total
+              {orderData.length > 0 && (
+                <>
+                  <br />• <strong>Nil Payment Orders:</strong> Orders from order file that have no corresponding payment records
+                  <br />• <strong>Unfiltered Orders:</strong> Payment orders that are not present in the order file
+                </>
+              )}
             </Typography>
 
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -490,6 +719,59 @@ const PaymentExport = () => {
                 </Typography>
               </Box>
             )}
+
+            {processedData.nilPaymentOrders.length > 0 && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Nil Payment Orders Preview ({processedData.nilPaymentOrders.length} orders):
+                </Typography>
+                <Box sx={{ maxHeight: 200, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                  {processedData.nilPaymentOrders.slice(0, 10).map((item, index) => (
+                    <Box key={index} sx={{ p: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                        {item.orderId}
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'error.main' }}>
+                        No Payment Found
+                      </Typography>
+                    </Box>
+                  ))}
+                  {processedData.nilPaymentOrders.length > 10 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ p: 1, display: 'block' }}>
+                      ... and {processedData.nilPaymentOrders.length - 10} more
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
+
+            {processedData.unfilteredOrders.length > 0 && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Unfiltered Orders Preview ({processedData.unfilteredOrders.length} orders):
+                </Typography>
+                <Box sx={{ maxHeight: 200, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                  {processedData.unfilteredOrders.slice(0, 10).map((item, index) => (
+                    <Box key={index} sx={{ p: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                        {item.orderId}
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                        ₹{item.total.toFixed(2)}
+                      </Typography>
+                    </Box>
+                  ))}
+                  {processedData.unfilteredOrders.length > 10 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ p: 1, display: 'block' }}>
+                      ... and {processedData.unfilteredOrders.length - 10} more
+                    </Typography>
+                  )}
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Total: ₹{totalUnfiltered.toFixed(2)}
+                </Typography>
+              </Box>
+            )}
           </CardContent>
         </Card>
       )}
@@ -504,6 +786,7 @@ const PaymentExport = () => {
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                 The tool will process your payment data and create an Excel export with consolidated orders and other payment records.
+                <br />Optionally upload an order file (.txt) with 'amazon-order-id' header to filter and categorize orders.
               </Typography>
             </Box>
           </CardContent>
