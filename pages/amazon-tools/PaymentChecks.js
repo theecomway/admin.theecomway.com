@@ -1,6 +1,318 @@
 "use client";
 import React, { useState, useMemo, useCallback } from "react";
 import Papa from "papaparse";
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  TextField,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TableSortLabel,
+  Tabs,
+  Tab,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Alert,
+  CircularProgress,
+  Card,
+  CardContent,
+  Grid,
+  IconButton,
+  Tooltip,
+  Divider,
+  Stack,
+  Badge,
+  LinearProgress,
+  TablePagination,
+  InputAdornment,
+  Fade,
+  Collapse
+} from '@mui/material';
+import {
+  ExpandMore as ExpandMoreIcon,
+  Upload as UploadIcon,
+  Clear as ClearIcon,
+  FilterList as FilterIcon,
+  TrendingUp as TrendingUpIcon,
+  Payment as PaymentIcon,
+  Receipt as ReceiptIcon,
+  Assessment as AssessmentIcon,
+  KeyboardArrowDown as ArrowDownIcon,
+  KeyboardArrowRight as ArrowRightIcon
+} from '@mui/icons-material';
+
+// Memoized table row component for better performance
+const PaymentRow = React.memo(({ r, i, expandedRows, toggleRowExpansion }) => (
+  <React.Fragment key={`${r.key}-${i}`}>
+    <TableRow 
+      hover
+      sx={{ 
+        cursor: r.isConsolidated ? 'pointer' : 'default',
+        '&:hover': { bgcolor: 'action.hover' }
+      }}
+      onClick={r.isConsolidated ? () => toggleRowExpansion(r.key) : undefined}
+    >
+      <TableCell>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {r.isConsolidated && (
+            <IconButton size="small">
+              {expandedRows.has(r.key) ? <ArrowDownIcon /> : <ArrowRightIcon />}
+            </IconButton>
+          )}
+          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+            {r.orderId || r.key}
+          </Typography>
+        </Box>
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2">{r.type}</Typography>
+      </TableCell>
+      <TableCell>
+        <Tooltip title={r.description} arrow>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              maxWidth: 200, 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {r.description && r.description.length > 50 
+              ? r.description.substring(0, 50) + '...' 
+              : r.description}
+          </Typography>
+        </Tooltip>
+      </TableCell>
+      <TableCell align="center">
+        <Chip 
+          label={r.count} 
+          size="small" 
+          color="primary" 
+          variant="outlined"
+        />
+      </TableCell>
+      <TableCell align="center">
+        <Chip
+          label={r.isConsolidated ? 'Consolidated' : 'Individual'}
+          size="small"
+          color={r.isConsolidated ? 'success' : 'warning'}
+          variant="filled"
+        />
+      </TableCell>
+      <TableCell align="right">
+        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+          ₹{(parseFloat(r.total) || 0).toFixed(2)}
+        </Typography>
+      </TableCell>
+    </TableRow>
+    
+    {/* Accordion content for consolidated rows */}
+    {r.isConsolidated && expandedRows.has(r.key) && r.individualRecords && (
+      <TableRow>
+        <TableCell colSpan={6} sx={{ p: 0, bgcolor: 'grey.50' }}>
+          <Accordion expanded={true} sx={{ boxShadow: 'none', bgcolor: 'transparent' }}>
+            <AccordionSummary
+              sx={{ 
+                bgcolor: 'grey.100', 
+                minHeight: 48,
+                '&.Mui-expanded': { minHeight: 48 }
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                Individual Payment Records ({r.individualRecords.length})
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ p: 0 }}>
+              <TableContainer sx={{ maxHeight: 400 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Date/Time</TableCell>
+                      <TableCell>Settlement ID</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>SKU</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell align="center">Quantity</TableCell>
+                      <TableCell>Marketplace</TableCell>
+                      <TableCell>Account Type</TableCell>
+                      <TableCell>Fulfillment</TableCell>
+                      <TableCell>Order City</TableCell>
+                      <TableCell>Order State</TableCell>
+                      <TableCell>Order Postal</TableCell>
+                      <TableCell align="right">Product Sales</TableCell>
+                      <TableCell align="right">Shipping Credits</TableCell>
+                      <TableCell align="right">Gift Wrap Credits</TableCell>
+                      <TableCell align="right">Promotional Rebates</TableCell>
+                      <TableCell align="right">Total Sales Tax</TableCell>
+                      <TableCell align="right">TCS-CGST</TableCell>
+                      <TableCell align="right">TCS-SGST</TableCell>
+                      <TableCell align="right">TCS-IGST</TableCell>
+                      <TableCell align="right">TDS</TableCell>
+                      <TableCell align="right">Selling Fees</TableCell>
+                      <TableCell align="right">FBA Fees</TableCell>
+                      <TableCell align="right">Other Transaction Fees</TableCell>
+                      <TableCell align="right">Other</TableCell>
+                      <TableCell align="right">Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {r.individualRecords.map((record, recordIndex) => (
+                      <TableRow key={`${r.key}-record-${recordIndex}`} hover>
+                        <TableCell>
+                          <Typography variant="caption">
+                            {record.date ? new Date(record.date).toLocaleString() : '-'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                            {record['settlement id'] || record['Settlement ID'] || '-'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">{record.type || 'Unknown'}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                            {record['Sku'] || record['SKU'] || '-'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip title={record.description} arrow>
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                maxWidth: 100, 
+                                overflow: 'hidden', 
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {record.description && record.description.length > 30 
+                                ? record.description.substring(0, 30) + '...' 
+                                : record.description || '-'}
+                            </Typography>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Typography variant="caption">{record.quantity || '-'}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">{record.marketplace || '-'}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">
+                            {record['account type'] || record['Account Type'] || '-'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">{record.fulfillment || '-'}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">
+                            {record['order city'] || record['Order City'] || '-'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">
+                            {record['order state'] || record['Order State'] || '-'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">
+                            {record['order postal'] || record['Order Postal'] || '-'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['product sales'] || record['Product Sales'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['shipping credits'] || record['Shipping Credits'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['gift wrap credits'] || record['Gift Wrap Credits'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['promotional rebates'] || record['Promotional Rebates'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['Total sales tax liable(GST before adjusting TCS)'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['TCS-CGST'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['TCS-SGST'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['TCS-IGST'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['TDS (Section 194-O)'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['selling fees'] || record['Selling Fees'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['fba fees'] || record['FBA Fees'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record['other transaction fees'] || record['Other Transaction Fees'] || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            ₹{(parseFloat(record.other || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                            ₹{(parseFloat(record.total || 0)).toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </AccordionDetails>
+          </Accordion>
+        </TableCell>
+      </TableRow>
+    )}
+  </React.Fragment>
+));
 
 const ConsolidatePayments = () => {
   const [data, setData] = useState([]);
@@ -13,6 +325,11 @@ const ConsolidatePayments = () => {
   const [delimiter, setDelimiter] = useState(","); // Default to comma
   const [activeTab, setActiveTab] = useState("all");
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
   const parseCSVWithFallback = useCallback(async (file, delimiter) => {
     return new Promise((resolve, reject) => {
@@ -386,6 +703,54 @@ const ConsolidatePayments = () => {
     if (activeTab === 'other') return groupedConsolidated.other || [];
     return groupedConsolidated[activeTab] || [];
   }, [groupedConsolidated, activeTab]);
+
+  // Filter data based on debounced search term
+  const filteredData = useMemo(() => {
+    if (!debouncedSearchTerm) return consolidated;
+    
+    const searchLower = debouncedSearchTerm.toLowerCase();
+    return consolidated.filter(item => 
+      (item.orderId && item.orderId.toLowerCase().includes(searchLower)) ||
+      (item.type && item.type.toLowerCase().includes(searchLower)) ||
+      (item.description && item.description.toLowerCase().includes(searchLower))
+    );
+  }, [consolidated, debouncedSearchTerm]);
+
+  // Paginated data
+  const paginatedData = useMemo(() => {
+    const startIndex = page * rowsPerPage;
+    return filteredData.slice(startIndex, startIndex + rowsPerPage);
+  }, [filteredData, page, rowsPerPage]);
+
+  // Handle pagination
+  const handleChangePage = useCallback((event, newPage) => {
+    setPage(newPage);
+  }, []);
+
+  const handleChangeRowsPerPage = useCallback((event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  }, []);
+
+  // Debounced search effect
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setIsSearching(false);
+    }, 300);
+
+    if (searchTerm !== debouncedSearchTerm) {
+      setIsSearching(true);
+    }
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
+
+  // Handle search
+  const handleSearchChange = useCallback((event) => {
+    setSearchTerm(event.target.value);
+    setPage(0); // Reset to first page when searching
+  }, []);
   
   const grandTotal = useMemo(() => {
     const total = consolidated.reduce((sum, r) => {
@@ -417,414 +782,358 @@ const ConsolidatePayments = () => {
   }, []);
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <h2 className="text-2xl font-bold mb-4">Payment Consolidator</h2>
-      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded">
+    <Box sx={{ p: 3, bgcolor: 'grey.50', minHeight: '100vh' }}>
+      <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+        Payment Consolidator
+      </Typography>
+      
+      <Alert severity="info" sx={{ mb: 3 }}>
         <strong>Note:</strong> This tool automatically skips the first 11 rows and uses row 12 as the header row, then processes data starting from row 13.
-      </div>
+      </Alert>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <Alert severity="error" sx={{ mb: 3 }}>
           {error}
-        </div>
+        </Alert>
       )}
 
-      <div className="mb-4 flex items-center gap-4 flex-wrap">
-        <input
-          type="file"
-          accept=".csv"
-          onChange={handleCSVUpload}
-          disabled={loading}
-          className="border p-2 rounded disabled:opacity-50"
-        />
-        <input
-          type="month"
-          value={monthFilter}
-          onChange={(e) => handleMonthFilter(e.target.value)}
-          className="border p-2 rounded"
-        />
-        {data.length > 0 && (
-          <button
-            onClick={() => {
-              setData([]);
-              setFiltered([]);
-              setMonthFilter("");
-              setError("");
-              setSortBy("total");
-              setSortOrder("desc");
-              setDelimiter(",");
-              setActiveTab("all");
-            }}
-            className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
-            disabled={loading}
-          >
-            Clear Data
-          </button>
-        )}
-        {loading && (
-          <div className="text-blue-600 font-medium">Processing...</div>
-        )}
-      </div>
-
-      <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="text-2xl font-bold text-gray-900">
-              ₹{(grandTotal || 0).toFixed(2)}
-            </div>
-            <div className="text-sm text-gray-600">
-              Total of filtered payments
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-sm text-gray-600">
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-              {consolidated.length} payment{consolidated.length !== 1 ? 's' : ''}
-            </div>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            <FilterIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            File Upload & Filters
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ mt: 2 }}>
+            <Button
+              variant="contained"
+              component="label"
+              startIcon={<UploadIcon />}
+              disabled={loading}
+              sx={{ minWidth: 150 }}
+            >
+              Upload CSV
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleCSVUpload}
+                hidden
+              />
+            </Button>
+            
+            <TextField
+              type="month"
+              label="Filter by Month"
+              value={monthFilter}
+              onChange={(e) => handleMonthFilter(e.target.value)}
+              variant="outlined"
+              size="small"
+              sx={{ minWidth: 200 }}
+            />
+            
+            <TextField
+              label="Search payments"
+              value={searchTerm}
+              onChange={handleSearchChange}
+              variant="outlined"
+              size="small"
+              sx={{ minWidth: 250 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <FilterIcon />
+                  </InputAdornment>
+                ),
+                endAdornment: isSearching && (
+                  <InputAdornment position="end">
+                    <CircularProgress size={20} />
+                  </InputAdornment>
+                ),
+              }}
+              placeholder="Search by Order ID, Type, or Description..."
+            />
+            
             {data.length > 0 && (
-              <div className="flex items-center gap-1">
-                <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
-                {data.length} total entries
-              </div>
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<ClearIcon />}
+                onClick={() => {
+                  setData([]);
+                  setFiltered([]);
+                  setMonthFilter("");
+                  setError("");
+                  setSortBy("total");
+                  setSortOrder("desc");
+                  setDelimiter(",");
+                  setActiveTab("all");
+                }}
+                disabled={loading}
+              >
+                Clear Data
+              </Button>
             )}
-          </div>
-        </div>
-      </div>
+            
+            {loading && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={20} />
+                <Typography variant="body2" color="primary">
+                  Processing...
+                </Typography>
+              </Box>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <CardContent>
+          <Grid container spacing={3} alignItems="center">
+            <Grid item xs={12} md={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <TrendingUpIcon sx={{ fontSize: 40 }} />
+                <Box>
+                  <Typography variant="h3" component="div" sx={{ fontWeight: 'bold' }}>
+                    ₹{(grandTotal || 0).toFixed(2)}
+                  </Typography>
+                  <Typography variant="body1" sx={{ opacity: 0.9 }}>
+                    Total of filtered payments
+                  </Typography>
+                </Box>
+              </Box>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Stack direction="row" spacing={3} justifyContent="flex-end">
+                <Chip
+                  icon={<PaymentIcon />}
+                  label={`${consolidated.length} payment${consolidated.length !== 1 ? 's' : ''}`}
+                  color="primary"
+                  variant="outlined"
+                  sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.3)' }}
+                />
+                {data.length > 0 && (
+                  <Chip
+                    icon={<AssessmentIcon />}
+                    label={`${data.length} total entries`}
+                    color="secondary"
+                    variant="outlined"
+                    sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.3)' }}
+                  />
+                )}
+              </Stack>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       {/* Enhanced Tabs */}
       {data.length > 0 && (
-        <div className="mb-6">
-          {/* Main Category Tabs */}
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Categories</h3>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setActiveTab("all")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  activeTab === "all"
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                📊 All ({(groupedConsolidated.all || []).length})
-              </button>
-              <button
-                onClick={() => setActiveTab("consolidated")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  activeTab === "consolidated"
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                🔄 Consolidated Orders ({(groupedConsolidated.consolidated || []).length})
-              </button>
-              <button
-                onClick={() => setActiveTab("other")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  activeTab === "other"
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                📋 Other ({(groupedConsolidated.other || []).length})
-              </button>
-            </div>
-          </div>
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ReceiptIcon />
+              Payment Categories
+            </Typography>
+            
+            <Tabs
+              value={activeTab}
+              onChange={(e, newValue) => setActiveTab(newValue)}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{ mb: 2 }}
+            >
+              <Tab
+                label={
+                  <Badge badgeContent={(groupedConsolidated.all || []).length} color="primary">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <AssessmentIcon />
+                      All
+                    </Box>
+                  </Badge>
+                }
+                value="all"
+              />
+              <Tab
+                label={
+                  <Badge badgeContent={(groupedConsolidated.consolidated || []).length} color="primary">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PaymentIcon />
+                      Consolidated Orders
+                    </Box>
+                  </Badge>
+                }
+                value="consolidated"
+              />
+              <Tab
+                label={
+                  <Badge badgeContent={(groupedConsolidated.other || []).length} color="primary">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <ReceiptIcon />
+                      Other
+                    </Box>
+                  </Badge>
+                }
+                value="other"
+              />
+            </Tabs>
 
-          {/* Type+Description Tabs */}
-          {Object.keys(groupedConsolidated)
-            .filter(key => !['all', 'consolidated', 'other'].includes(key))
-            .sort()
-            .length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Payment Types</h3>
-              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                {Object.keys(groupedConsolidated)
-                  .filter(key => !['all', 'consolidated', 'other'].includes(key))
-                  .sort()
-                  .map(typeDescKey => {
-                    const count = (groupedConsolidated[typeDescKey] || []).length;
-                    if (count === 0) return null;
-                    
-                    // Truncate long Type+Description for display
-                    const displayName = typeDescKey.length > 25 
-                      ? typeDescKey.substring(0, 25) + '...' 
-                      : typeDescKey;
-                    
-                    return (
-                      <button
-                        key={typeDescKey}
-                        onClick={() => setActiveTab(typeDescKey)}
-                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
-                          activeTab === typeDescKey
-                            ? "bg-green-500 text-white shadow-md"
-                            : "bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200"
-                        }`}
-                        title={typeDescKey} // Show full name on hover
-                      >
-                        {displayName} ({count})
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-        </div>
+            {/* Type+Description Tabs */}
+            {Object.keys(groupedConsolidated)
+              .filter(key => !['all', 'consolidated', 'other'].includes(key))
+              .sort()
+              .length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom sx={{ mt: 2, mb: 1, color: 'text.secondary' }}>
+                  Payment Types
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 120, overflowY: 'auto' }}>
+                  {Object.keys(groupedConsolidated)
+                    .filter(key => !['all', 'consolidated', 'other'].includes(key))
+                    .sort()
+                    .map(typeDescKey => {
+                      const count = (groupedConsolidated[typeDescKey] || []).length;
+                      if (count === 0) return null;
+                      
+                      const displayName = typeDescKey.length > 25 
+                        ? typeDescKey.substring(0, 25) + '...' 
+                        : typeDescKey;
+                      
+                      return (
+                        <Chip
+                          key={typeDescKey}
+                          label={`${displayName} (${count})`}
+                          onClick={() => setActiveTab(typeDescKey)}
+                          color={activeTab === typeDescKey ? "primary" : "default"}
+                          variant={activeTab === typeDescKey ? "filled" : "outlined"}
+                          size="small"
+                          sx={{ mb: 1 }}
+                          title={typeDescKey}
+                        />
+                      );
+                    })}
+                </Box>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      <div className="overflow-x-auto bg-white rounded-lg shadow-lg">
-        <table className="w-full border-collapse">
-          <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-            <tr>
-              <th 
-                className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200 select-none transition-colors"
-                onClick={() => handleSort('orderId')}
-              >
-                <div className="flex items-center gap-1">
-                  Order ID / Key
-                  {sortBy === 'orderId' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200 select-none transition-colors"
-                onClick={() => handleSort('type')}
-              >
-                <div className="flex items-center gap-1">
-                  Type
-                  {sortBy === 'type' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200 select-none transition-colors"
-                onClick={() => handleSort('description')}
-              >
-                <div className="flex items-center gap-1">
-                  Description
-                  {sortBy === 'description' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200 select-none transition-colors"
-                onClick={() => handleSort('count')}
-              >
-                <div className="flex items-center justify-center gap-1">
-                  # Payments
-                  {sortBy === 'count' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </div>
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                Status
-              </th>
-              <th 
-                className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-200 select-none transition-colors"
-                onClick={() => handleSort('total')}
-              >
-                <div className="flex items-center justify-end gap-1">
-                  Total (₹)
-                  {sortBy === 'total' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </div>
-              </th>
-            </tr>
-          </thead>
-        <tbody className="divide-y divide-gray-200">
-          {consolidated.length === 0 ? (
-            <tr>
-              <td colSpan="6" className="px-6 py-12 text-center">
-                <div className="flex flex-col items-center">
-                  <div className="text-gray-400 text-4xl mb-2">📊</div>
-                  <p className="text-gray-500 text-lg font-medium">
-                    {data.length === 0 ? "Upload a CSV file to get started" : "No payments found for the selected criteria"}
-                  </p>
-                </div>
-              </td>
-            </tr>
-          ) : (
-            consolidated.map((r, i) => (
-              <React.Fragment key={`${r.key}-${i}`}>
-                <tr 
-                  className={`hover:bg-gray-50 transition-colors ${r.isConsolidated ? 'cursor-pointer' : ''}`}
-                  onClick={r.isConsolidated ? () => toggleRowExpansion(r.key) : undefined}
-                >
-                  <td className="px-4 py-3 text-sm font-mono text-gray-900">
-                    <div className="flex items-center gap-2">
-                      {r.isConsolidated && (
-                        <span className="text-gray-400">
-                          {expandedRows.has(r.key) ? '▼' : '▶'}
-                        </span>
+      <Card>
+        <TableContainer>
+          <Table stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortBy === 'orderId'}
+                    direction={sortBy === 'orderId' ? sortOrder : 'asc'}
+                    onClick={() => handleSort('orderId')}
+                  >
+                    Order ID / Key
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortBy === 'type'}
+                    direction={sortBy === 'type' ? sortOrder : 'asc'}
+                    onClick={() => handleSort('type')}
+                  >
+                    Type
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortBy === 'description'}
+                    direction={sortBy === 'description' ? sortOrder : 'asc'}
+                    onClick={() => handleSort('description')}
+                  >
+                    Description
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="center">
+                  <TableSortLabel
+                    active={sortBy === 'count'}
+                    direction={sortBy === 'count' ? sortOrder : 'asc'}
+                    onClick={() => handleSort('count')}
+                  >
+                    # Payments
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="center">Status</TableCell>
+                <TableCell align="right">
+                  <TableSortLabel
+                    active={sortBy === 'total'}
+                    direction={sortBy === 'total' ? sortOrder : 'asc'}
+                    onClick={() => handleSort('total')}
+                  >
+                    Total (₹)
+                  </TableSortLabel>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <AssessmentIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
+                      <Typography variant="h6" color="text.secondary">
+                        {data.length === 0 ? "Upload a CSV file to get started" : 
+                         searchTerm ? "No payments found matching your search" : 
+                         "No payments found for the selected criteria"}
+                      </Typography>
+                      {searchTerm && (
+                        <Button 
+                          variant="outlined" 
+                          onClick={() => setSearchTerm("")}
+                          sx={{ mt: 1 }}
+                        >
+                          Clear Search
+                        </Button>
                       )}
-                      {r.orderId || r.key}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {r.type}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={r.description}>
-                    {r.description && r.description.length > 50 
-                      ? r.description.substring(0, 50) + '...' 
-                      : r.description}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {r.count}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      r.isConsolidated 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {r.isConsolidated ? '✅ Consolidated' : '📄 Individual'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-sm font-semibold text-gray-900">
-                      ₹{(parseFloat(r.total) || 0).toFixed(2)}
-                    </span>
-                  </td>
-                </tr>
-                
-                {/* Accordion content for consolidated rows */}
-                {r.isConsolidated && expandedRows.has(r.key) && r.individualRecords && (
-                  <tr className="bg-gray-50">
-                    <td colSpan="6" className="px-4 py-4">
-                      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="px-4 py-2 bg-gray-100 border-b border-gray-200">
-                          <h4 className="text-sm font-semibold text-gray-700">
-                            Individual Payment Records ({r.individualRecords.length})
-                          </h4>
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date/Time</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Settlement ID</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Marketplace</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account Type</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fulfillment</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order City</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order State</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Postal</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Product Sales</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Shipping Credits</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gift Wrap Credits</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Promotional Rebates</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Sales Tax</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TCS-CGST</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TCS-SGST</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TCS-IGST</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TDS</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Selling Fees</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">FBA Fees</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Other Transaction Fees</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Other</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                              {r.individualRecords.map((record, recordIndex) => (
-                                <tr key={`${r.key}-record-${recordIndex}`} className="hover:bg-gray-50">
-                                  <td className="px-3 py-2 text-sm text-gray-900">
-                                    {record.date ? new Date(record.date).toLocaleString() : '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 font-mono">
-                                    {record['settlement id'] || record['Settlement ID'] || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">
-                                    {record.type || 'Unknown'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 font-mono">
-                                    {record['Sku'] || record['SKU'] || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-600 max-w-xs truncate" title={record.description}>
-                                    {record.description && record.description.length > 30 
-                                      ? record.description.substring(0, 30) + '...' 
-                                      : record.description || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-center">
-                                    {record.quantity || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">
-                                    {record.marketplace || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">
-                                    {record['account type'] || record['Account Type'] || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">
-                                    {record.fulfillment || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">
-                                    {record['order city'] || record['Order City'] || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">
-                                    {record['order state'] || record['Order State'] || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">
-                                    {record['order postal'] || record['Order Postal'] || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['product sales'] || record['Product Sales'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['shipping credits'] || record['Shipping Credits'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['gift wrap credits'] || record['Gift Wrap Credits'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['promotional rebates'] || record['Promotional Rebates'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['Total sales tax liable(GST before adjusting TCS)'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['TCS-CGST'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['TCS-SGST'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['TCS-IGST'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['TDS (Section 194-O)'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['selling fees'] || record['Selling Fees'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['fba fees'] || record['FBA Fees'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record['other transaction fees'] || record['Other Transaction Fees'] || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                                    ₹{(parseFloat(record.other || 0)).toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm font-semibold text-gray-900 text-right">
-                                    ₹{(parseFloat(record.total || 0)).toFixed(2)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedData.map((r, i) => (
+                  <PaymentRow 
+                    key={`${r.key}-${i}`}
+                    r={r}
+                    i={i}
+                    expandedRows={expandedRows}
+                    toggleRowExpansion={toggleRowExpansion}
+                  />
+                ))
           )}
-        </tbody>
-        </table>
-      </div>
-    </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
+        
+        {/* Pagination Controls */}
+        {filteredData.length > 0 && (
+          <TablePagination
+            component="div"
+            count={filteredData.length}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[10, 25, 50, 100]}
+            labelRowsPerPage="Rows per page:"
+            labelDisplayedRows={({ from, to, count }) => 
+              `${from}-${to} of ${count !== -1 ? count : `more than ${to}`}`
+            }
+            sx={{
+              borderTop: 1,
+              borderColor: 'divider',
+              '& .MuiTablePagination-toolbar': {
+                paddingLeft: 2,
+                paddingRight: 2,
+              }
+            }}
+          />
+        )}
+      </Card>
+    </Box>
   );
 };
 
