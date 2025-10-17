@@ -149,7 +149,7 @@ const PaymentExport = () => {
 
   // Process data for export
   const processedData = useMemo(() => {
-    if (!filtered.length) return { consolidatedOrders: [], otherPayments: [] };
+    if (!filtered.length) return { consolidatedOrders: [], otherPayments: [], transferPayments: [] };
 
     const consolidatedOrders = [];
     const otherPayments = [];
@@ -179,6 +179,7 @@ const PaymentExport = () => {
           month,
           keyDescription,
           total,
+          type,
           originalData: row // Keep original data for reference
         });
       }
@@ -187,7 +188,12 @@ const PaymentExport = () => {
     // Convert consolidated map to array
     consolidatedOrders.push(...Array.from(consolidatedMap.values()));
 
-    return { consolidatedOrders, otherPayments };
+    // Split other payments into transfers and non-transfers
+    const transferPayments = otherPayments.filter(item => (item.type || '').toLowerCase() === 'transfer');
+    const otherNonTransferPayments = otherPayments.filter(item => (item.type || '').toLowerCase() !== 'transfer');
+
+    // Return non-transfer others as otherPayments
+    return { consolidatedOrders, otherPayments: otherNonTransferPayments, transferPayments };
   }, [filtered]);
 
   const handleExport = useCallback(async () => {
@@ -224,6 +230,18 @@ const PaymentExport = () => {
 
         const otherSheet = XLSX.utils.json_to_sheet(otherData);
         XLSX.utils.book_append_sheet(workbook, otherSheet, 'Other Payments');
+      }
+
+      // Tab 3: Transfers (Type = Transfer)
+      if (processedData.transferPayments.length > 0) {
+        const transferData = processedData.transferPayments.map(item => ({
+          'Month': item.month,
+          'Key+Description': item.keyDescription,
+          'Total (₹)': item.total.toFixed(2)
+        }));
+
+        const transfersSheet = XLSX.utils.json_to_sheet(transferData);
+        XLSX.utils.book_append_sheet(workbook, transfersSheet, 'Transfers');
       }
 
       // Generate filename with current date
@@ -387,9 +405,10 @@ const PaymentExport = () => {
             </Typography>
             
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              The exported Excel file will contain two tabs:
+              The exported Excel file will contain three tabs:
               <br />• <strong>Consolidated Orders:</strong> Order IDs matching pattern xxx-xxxxxxx-xxxxxxx with their totals
               <br />• <strong>Other Payments:</strong> All other payment records with month, key+description, and total
+              <br />• <strong>Transfers:</strong> Only records where Type = Transfer, with month, key+description, and total
             </Typography>
 
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
