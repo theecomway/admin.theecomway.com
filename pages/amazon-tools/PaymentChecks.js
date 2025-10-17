@@ -12,6 +12,7 @@ const ConsolidatePayments = () => {
   const [sortOrder, setSortOrder] = useState("desc");
   const [delimiter, setDelimiter] = useState(","); // Default to comma
   const [activeTab, setActiveTab] = useState("all");
+  const [expandedRows, setExpandedRows] = useState(new Set());
 
   const parseCSVWithFallback = useCallback(async (file, delimiter) => {
     return new Promise((resolve, reject) => {
@@ -255,13 +256,15 @@ const ConsolidatePayments = () => {
             description: row.description || "No description",
             total: 0,
             count: 0,
-            isConsolidated: true
+            isConsolidated: true,
+            individualRecords: [] // Store individual records
           };
           result.push(group);
         }
         
         group.total += parseFloat(row.total) || 0;
         group.count += 1;
+        group.individualRecords.push(row); // Add individual record
       } else {
         // For rows without Order ID or with non-matching Order ID, use Type+Description as key but don't consolidate
         const key = `${row.type || 'Unknown'}+${row.description || 'Unknown'}`;
@@ -400,6 +403,18 @@ const ConsolidatePayments = () => {
       setSortOrder('desc');
     }
   }, [sortBy, sortOrder]);
+
+  const toggleRowExpansion = useCallback((rowKey) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(rowKey)) {
+        newSet.delete(rowKey);
+      } else {
+        newSet.add(rowKey);
+      }
+      return newSet;
+    });
+  }, []);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -625,38 +640,185 @@ const ConsolidatePayments = () => {
             </tr>
           ) : (
             consolidated.map((r, i) => (
-              <tr key={`${r.key}-${i}`} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 text-sm font-mono text-gray-900">
-                  {r.orderId || r.key}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-700">
-                  {r.type}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={r.description}>
-                  {r.description && r.description.length > 50 
-                    ? r.description.substring(0, 50) + '...' 
-                    : r.description}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    {r.count}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    r.isConsolidated 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {r.isConsolidated ? '✅ Consolidated' : '📄 Individual'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="text-sm font-semibold text-gray-900">
-                    ₹{(parseFloat(r.total) || 0).toFixed(2)}
-                  </span>
-                </td>
-              </tr>
+              <React.Fragment key={`${r.key}-${i}`}>
+                <tr 
+                  className={`hover:bg-gray-50 transition-colors ${r.isConsolidated ? 'cursor-pointer' : ''}`}
+                  onClick={r.isConsolidated ? () => toggleRowExpansion(r.key) : undefined}
+                >
+                  <td className="px-4 py-3 text-sm font-mono text-gray-900">
+                    <div className="flex items-center gap-2">
+                      {r.isConsolidated && (
+                        <span className="text-gray-400">
+                          {expandedRows.has(r.key) ? '▼' : '▶'}
+                        </span>
+                      )}
+                      {r.orderId || r.key}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-700">
+                    {r.type}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={r.description}>
+                    {r.description && r.description.length > 50 
+                      ? r.description.substring(0, 50) + '...' 
+                      : r.description}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {r.count}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      r.isConsolidated 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {r.isConsolidated ? '✅ Consolidated' : '📄 Individual'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="text-sm font-semibold text-gray-900">
+                      ₹{(parseFloat(r.total) || 0).toFixed(2)}
+                    </span>
+                  </td>
+                </tr>
+                
+                {/* Accordion content for consolidated rows */}
+                {r.isConsolidated && expandedRows.has(r.key) && r.individualRecords && (
+                  <tr className="bg-gray-50">
+                    <td colSpan="6" className="px-4 py-4">
+                      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="px-4 py-2 bg-gray-100 border-b border-gray-200">
+                          <h4 className="text-sm font-semibold text-gray-700">
+                            Individual Payment Records ({r.individualRecords.length})
+                          </h4>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date/Time</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Settlement ID</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Marketplace</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account Type</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fulfillment</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order City</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order State</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Postal</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Product Sales</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Shipping Credits</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gift Wrap Credits</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Promotional Rebates</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Sales Tax</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TCS-CGST</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TCS-SGST</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TCS-IGST</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TDS</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Selling Fees</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">FBA Fees</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Other Transaction Fees</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Other</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {r.individualRecords.map((record, recordIndex) => (
+                                <tr key={`${r.key}-record-${recordIndex}`} className="hover:bg-gray-50">
+                                  <td className="px-3 py-2 text-sm text-gray-900">
+                                    {record.date ? new Date(record.date).toLocaleString() : '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 font-mono">
+                                    {record['settlement id'] || record['Settlement ID'] || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    {record.type || 'Unknown'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 font-mono">
+                                    {record['Sku'] || record['SKU'] || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-600 max-w-xs truncate" title={record.description}>
+                                    {record.description && record.description.length > 30 
+                                      ? record.description.substring(0, 30) + '...' 
+                                      : record.description || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-center">
+                                    {record.quantity || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    {record.marketplace || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    {record['account type'] || record['Account Type'] || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    {record.fulfillment || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    {record['order city'] || record['Order City'] || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    {record['order state'] || record['Order State'] || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    {record['order postal'] || record['Order Postal'] || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['product sales'] || record['Product Sales'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['shipping credits'] || record['Shipping Credits'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['gift wrap credits'] || record['Gift Wrap Credits'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['promotional rebates'] || record['Promotional Rebates'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['Total sales tax liable(GST before adjusting TCS)'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['TCS-CGST'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['TCS-SGST'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['TCS-IGST'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['TDS (Section 194-O)'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['selling fees'] || record['Selling Fees'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['fba fees'] || record['FBA Fees'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record['other transaction fees'] || record['Other Transaction Fees'] || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                                    ₹{(parseFloat(record.other || 0)).toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-2 text-sm font-semibold text-gray-900 text-right">
+                                    ₹{(parseFloat(record.total || 0)).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))
           )}
         </tbody>
