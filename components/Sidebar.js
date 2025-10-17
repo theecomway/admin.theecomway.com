@@ -87,12 +87,7 @@ const Sidebar = ({ onClose }) => {
       path: '/amazon',
       children: [
         { title: 'Auth', path: '/amazon-auth' },
-        { title: 'Merge Orders Reports', path: '/amazon-tools/merge-orders-reports' },
-        { title: 'Orders Breakdown', path: '/amazon-tools/OrdersBreakdown' },
-        { title: 'Payments Breakdown', path: '/amazon-tools/PaymentsBreakdown' },
-        { title: 'Payment Checks', path: '/amazon-tools/PaymentChecks' },
         { title: 'Payment Export', path: '/amazon-tools/PaymentExport' },
-        { title: 'Order Payment Matcher', path: '/amazon-tools/order-payment-matcher' },
       ],
     },
     {
