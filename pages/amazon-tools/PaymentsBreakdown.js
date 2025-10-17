@@ -137,8 +137,28 @@ const PaymentsBreakdown = () => {
             return;
           }
 
-          // Row 12 (index 11) as headers
-          const headerRow = lines[11].split(',').map(h => h.replace(/"/g, '').trim());
+          // Row 12 (index 11) as headers - use proper CSV parsing
+          const parseCSVLine = (line) => {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+              if (char === '"') {
+                inQuotes = !inQuotes;
+              } else if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+              } else {
+                current += char;
+              }
+            }
+            result.push(current.trim());
+            return result;
+          };
+
+          const headerRow = parseCSVLine(lines[11]);
           const headers = headerRow.map((header, index) => ({
             id: `col_${index}`,
             label: header || `Column ${index + 1}`,
@@ -149,7 +169,7 @@ const PaymentsBreakdown = () => {
           // Rest as data (from row 13 onwards)
           const csvData = lines.slice(12).map((line, rowIndex) => {
             const rowData = { id: rowIndex };
-            const values = line.split(',').map(v => v.replace(/"/g, '').trim());
+            const values = parseCSVLine(line);
             
             headers.forEach((header, colIndex) => {
               rowData[header.field] = values[colIndex] || "";
@@ -303,6 +323,7 @@ const PaymentsBreakdown = () => {
 
     const { headers: parsedHeaders, data } = await parseFile(file);
     
+    
     if (parsedHeaders.length > 0 && data.length > 0) {
       setHeaders(parsedHeaders);
       setRawData(data);
@@ -313,7 +334,8 @@ const PaymentsBreakdown = () => {
         h.label.toLowerCase().includes('order-id')
       );
       const totalColumn = parsedHeaders.find(h => 
-        h.label.toLowerCase().includes('total')
+        h.label.toLowerCase() === 'total' || 
+        h.label.toLowerCase().includes('total') && !h.label.toLowerCase().includes('tax')
       );
       const typeColumn = parsedHeaders.find(h => 
         h.label.toLowerCase().includes('type')
@@ -342,12 +364,18 @@ const PaymentsBreakdown = () => {
    * @pure - No side effects, returns consolidated data
    */
   const consolidatedPayments = useMemo(() => {
+    // Don't run consolidation if headers or rawData are empty
+    if (headers.length === 0 || rawData.length === 0) {
+      return [];
+    }
+
     const orderIdColumn = headers.find(h => 
       h.label.toLowerCase().includes('order id') || 
       h.label.toLowerCase().includes('order-id')
     );
     const totalColumn = headers.find(h => 
-      h.label.toLowerCase().includes('total')
+      h.label.toLowerCase() === 'total' || 
+      h.label.toLowerCase().includes('total') && !h.label.toLowerCase().includes('tax')
     );
     const typeColumn = headers.find(h => 
       h.label.toLowerCase().includes('type')
