@@ -68,6 +68,38 @@ export default function MeeshoLabelSorter() {
   };
 
   /**
+   * Formats extracted text by inserting newlines before each product identifier
+   * Splits on the pattern: long_number_underscore_short_number (e.g., 214043021636828864_4)
+   * @param {string} text - Extracted text to format
+   * @returns {string} Formatted text with newlines inserted
+   */
+  const formatOrderInfo = (text) => {
+    if (!text) return text;
+    
+    // Pattern to match: Many digits_underscore_one or two digits (e.g., 214043021636828864_4)
+    // This pattern matches long order IDs with underscore and short suffix
+    const productPattern = /\b\d{18}_\d\b/g;
+    
+    // First, replace all order IDs with "NEW ORDER"
+    let replacedText = text.replace(productPattern, 'NEW ORDER');
+    
+    // Then split on "NEW ORDER" and join with newlines to put each segment on a new line
+    const segments = replacedText.split('NEW ORDER');
+    
+    // Rebuild by inserting "NEW ORDER" with newline after it
+    const result = [segments[0].trim()]; // First segment (before first NEW ORDER)
+    
+    for (let i = 1; i < segments.length; i++) {
+      result.push('NEW ORDER\n'); // Add "NEW ORDER" with newline after it
+      if (segments[i].trim()) {
+        result.push(segments[i].trim()); // Add the segment text
+      }
+    }
+    
+    return result.join('');
+  };
+
+  /**
    * Extracts text between "Order No." and "TAX INVOICE" markers
    * @param {string} text - Full page text
    * @returns {string|null} Extracted text between markers, or null if not found
@@ -86,7 +118,10 @@ export default function MeeshoLabelSorter() {
     // Extract text after "Order No." and before "TAX INVOICE"
     const extractedText = text.substring(startIndex + startMarker.length, endIndex).trim();
     
-    return extractedText;
+    // Format the text to add newlines before each product identifier
+    const formattedText = formatOrderInfo(extractedText);
+    
+    return formattedText;
   };
 
   /**
@@ -278,6 +313,7 @@ export default function MeeshoLabelSorter() {
                               border: '1px solid #90caf9',
                               fontFamily: 'monospace',
                               fontSize: '0.9rem',
+                              whiteSpace: 'pre-wrap',
                               wordBreak: 'break-word',
                             }}
                           >
