@@ -41,6 +41,7 @@ const Sidebar = ({ onClose }) => {
     analytics: false,
     sessionanalytics: false,
     flipkart: false,
+    meesho: false,
     files: false,
   });
 
@@ -98,6 +99,14 @@ const Sidebar = ({ onClose }) => {
         { title: 'Dashboard', path: '/flipkart' },
         { title: 'Orders Report', path: '/flipkart-tools/orders-report' },
         { title: 'Payment Merger', path: '/flipkart-tools/payment-merger' },
+      ],
+    },
+    {
+      title: 'Meesho Tools',
+      icon: <Label />,
+      path: '/meesho',
+      children: [
+        { title: 'Label Sorter', path: '/meesho/meesho-label-sorter' },
       ],
     },
     {
