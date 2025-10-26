@@ -1,5 +1,6 @@
 import { useState } from "react";
 import * as pdfjsLib from 'pdfjs-dist';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import {
   Box,
   Container,
@@ -12,7 +13,7 @@ import {
   CardContent,
   Stack,
 } from '@mui/material';
-import { Upload, Description, Clear } from '@mui/icons-material';
+import { Upload, Description, Clear, Download } from '@mui/icons-material';
 
 // Set up the worker for pdfjs
 if (typeof window !== 'undefined') {
@@ -25,6 +26,7 @@ export default function MeeshoLabelSorter() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [totalPages, setTotalPages] = useState(0);
+  const [modifiedPdfBytes, setModifiedPdfBytes] = useState(null);
 
   /**
    * Handles file selection
@@ -198,6 +200,108 @@ export default function MeeshoLabelSorter() {
     setExtractedPages([]);
     setError("");
     setTotalPages(0);
+    setModifiedPdfBytes(null);
+  };
+
+  /**
+   * Generates a PDF with extracted text printed on each page
+   */
+  const handleGeneratePDF = async () => {
+    if (!file || extractedPages.length === 0) {
+      setError("Please process the PDF first.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      // Load the original PDF
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      
+      // Get the font
+      const helveticaFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      // Add text to each page
+      for (let i = 0; i < extractedPages.length; i++) {
+        const page = pdfDoc.getPage(i);
+        const { width, height } = page.getSize();
+        
+        // Get the extracted order info for this page
+        const orderInfo = extractedPages[i].orderInfo;
+        
+        if (orderInfo) {
+          // Split the text into lines
+          const lines = orderInfo.split('\n').filter(line => line.trim());
+          
+          if (lines.length > 0) {
+            // Calculate the dimensions of the white background
+            const lineHeight = 20;
+            const padding = 10;
+            const startY = 150;
+            const textWidth = width - 100; // Width for text area
+            const textHeight = lines.length * lineHeight;
+            
+            // Draw white background rectangle
+            page.drawRectangle({
+              x: 50 - padding,
+              y: startY - padding,
+              width: textWidth + (padding * 2),
+              height: textHeight + (padding * 2),
+              color: rgb(1, 1, 1), // White background
+            });
+            
+            // Start drawing from the very bottom of the page (y starts from bottom)
+            let yPosition = 150; // Start from 150 pixels from the bottom
+            
+            // Draw each line of extracted text, moving upward from bottom
+            for (const line of lines) {
+              page.drawText(line, {
+                x: 50,
+                y: yPosition,
+                size: 20,
+                font: helveticaFont,
+                color: rgb(0, 0, 0),
+              });
+              
+              yPosition += lineHeight; // Move to next line upward (closer to top)
+            }
+          }
+        }
+      }
+
+      // Save the PDF
+      const pdfBytes = await pdfDoc.save();
+      setModifiedPdfBytes(pdfBytes);
+      
+      console.log("PDF generated successfully with text annotations");
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      setError(`Failed to generate PDF: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Downloads the modified PDF
+   */
+  const handleDownloadPDF = () => {
+    if (!modifiedPdfBytes) {
+      setError("No modified PDF to download.");
+      return;
+    }
+
+    const blob = new Blob([modifiedPdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file ? file.name.replace('.pdf', '_with_text.pdf') : 'modified.pdf';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -262,7 +366,7 @@ export default function MeeshoLabelSorter() {
           </Paper>
 
           {/* Actions */}
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               onClick={handleProcessPDF}
@@ -271,6 +375,32 @@ export default function MeeshoLabelSorter() {
             >
               {loading ? "Processing..." : "Extract Text & Console Log"}
             </Button>
+            
+            {extractedPages.length > 0 && (
+              <>
+                <Button
+                  variant="contained"
+                  onClick={handleGeneratePDF}
+                  disabled={loading}
+                  color="secondary"
+                  startIcon={loading ? <CircularProgress size={20} /> : <Description />}
+                >
+                  {loading ? "Generating..." : "Generate PDF with Text"}
+                </Button>
+                
+                {modifiedPdfBytes && (
+                  <Button
+                    variant="contained"
+                    onClick={handleDownloadPDF}
+                    disabled={loading}
+                    color="success"
+                    startIcon={<Download />}
+                  >
+                    Download Modified PDF
+                  </Button>
+                )}
+              </>
+            )}
           </Box>
 
           {/* Results Summary */}
