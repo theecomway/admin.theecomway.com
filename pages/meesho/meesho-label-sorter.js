@@ -86,11 +86,11 @@ export default function MeeshoLabelSorter() {
     // Then split on "NEW ORDER" and join with newlines to put each segment on a new line
     const segments = replacedText.split('NEW ORDER');
     
-    // Rebuild by inserting "NEW ORDER" with newline after it
+    // Rebuild by inserting newline to separate each segment
     const result = [segments[0].trim()]; // First segment (before first NEW ORDER)
     
     for (let i = 1; i < segments.length; i++) {
-      result.push('NEW ORDER\n'); // Add "NEW ORDER" with newline after it
+      result.push('\n'); // Add newline to separate segments
       if (segments[i].trim()) {
         result.push(segments[i].trim()); // Add the segment text
       }
