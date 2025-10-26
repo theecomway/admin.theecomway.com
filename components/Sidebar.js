@@ -97,6 +97,7 @@ const Sidebar = ({ onClose }) => {
       children: [
         { title: 'Dashboard', path: '/flipkart' },
         { title: 'Orders Report', path: '/flipkart-tools/orders-report' },
+        { title: 'Payment Merger', path: '/flipkart-tools/payment-merger' },
       ],
     },
     {
