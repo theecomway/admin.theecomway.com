@@ -68,35 +68,23 @@ export default function MeeshoLabelSorter() {
   };
 
   /**
-   * Extracts text between "Order No." and order ID pattern
+   * Extracts text between "Order No." and "TAX INVOICE" markers
    * @param {string} text - Full page text
    * @returns {string|null} Extracted text between markers, or null if not found
    */
   const extractOrderInfo = (text) => {
-    // Look for "Order No." (case sensitive)
     const startMarker = "Order No.";
+    const endMarker = "TAX INVOICE";
+    
     const startIndex = text.indexOf(startMarker);
+    const endIndex = text.indexOf(endMarker);
     
-    if (startIndex === -1) {
+    if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
       return null;
     }
-
-    // Find the starting position after "Order No."
-    const searchStart = startIndex + startMarker.length;
     
-    // Pattern to match: digits_underscore_digits (e.g., 213713174461084992_1)
-    const orderIdPattern = /\d+_\d+/;
-    const match = text.substring(searchStart).match(orderIdPattern);
-    
-    if (!match) {
-      return null;
-    }
-
-    // Find the position of the order ID
-    const orderIdIndex = searchStart + text.substring(searchStart).indexOf(match[0]);
-    
-    // Extract text between "Order No." and the order ID
-    const extractedText = text.substring(searchStart, orderIdIndex).trim();
+    // Extract text after "Order No." and before "TAX INVOICE"
+    const extractedText = text.substring(startIndex + startMarker.length, endIndex).trim();
     
     return extractedText;
   };
@@ -138,11 +126,22 @@ export default function MeeshoLabelSorter() {
         console.log(pageText);
         console.log("\n" + "=".repeat(80));
 
+        // Extract text between "Order No." and "TAX INVOICE"
+        const orderInfo = extractOrderInfo(pageText);
+        if (orderInfo) {
+          console.log(`\n📦 [Page ${pageNum}] Text between "Order No." and "TAX INVOICE":`);
+          console.log(orderInfo);
+          console.log("\n" + "-".repeat(80));
+        } else {
+          console.log(`\n⚠️  [Page ${pageNum}] No text found between "Order No." and "TAX INVOICE"`);
+        }
+
         pages.push({
           pageNum,
           text: pageText,
           textLength: pageText.length,
-          preview: pageText.substring(0, 100) + (pageText.length > 100 ? '...' : '')
+          preview: pageText.substring(0, 100) + (pageText.length > 100 ? '...' : ''),
+          orderInfo: orderInfo
         });
       }
 
@@ -265,6 +264,31 @@ export default function MeeshoLabelSorter() {
                           {page.textLength} characters
                         </Typography>
                       </Box>
+                      
+                      {page.orderInfo && (
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="subtitle2" color="primary" fontWeight="bold" gutterBottom>
+                            📦 Extracted Order Info (Between "Order No." and "TAX INVOICE"):
+                          </Typography>
+                          <Box
+                            sx={{
+                              backgroundColor: '#e3f2fd',
+                              p: 2,
+                              borderRadius: 1,
+                              border: '1px solid #90caf9',
+                              fontFamily: 'monospace',
+                              fontSize: '0.9rem',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {page.orderInfo}
+                          </Box>
+                        </Box>
+                      )}
+                      
+                      <Typography variant="caption" color="text.secondary" gutterBottom display="block">
+                        Full Page Text:
+                      </Typography>
                       <Box
                         sx={{
                           backgroundColor: '#f5f5f5',
