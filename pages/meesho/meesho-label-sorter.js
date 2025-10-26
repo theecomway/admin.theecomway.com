@@ -12,6 +12,9 @@ import {
   Card,
   CardContent,
   Stack,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
 } from '@mui/material';
 import { Upload, Description, Clear, Download } from '@mui/icons-material';
 
@@ -27,6 +30,12 @@ export default function MeeshoLabelSorter() {
   const [error, setError] = useState("");
   const [totalPages, setTotalPages] = useState(0);
   const [modifiedPdfBytes, setModifiedPdfBytes] = useState(null);
+  const [includeFields, setIncludeFields] = useState({
+    SKU: true,
+    quantity: true,
+    size: true,
+    color: true,
+  });
 
   /**
    * Handles file selection
@@ -168,6 +177,42 @@ export default function MeeshoLabelSorter() {
   };
 
   /**
+   * Formats parsed orders into aligned label format
+   * @param {Array} orders - Array of parsed order objects
+   * @returns {string} Formatted label string with aligned columns
+   */
+  const formatLabelString = (orders) => {
+    if (!orders || orders.length === 0) return '';
+    
+    const lines = [];
+    
+    for (const order of orders) {
+      // Handle SKU - truncate if longer than 35 characters
+      let sku = order.SKU || '';
+      if (sku.length > 35) {
+        sku = sku.substring(0, 32) + '...';
+      }
+      
+      // Get other fields
+      const size = order.size || '';
+      const quantity = String(order.quantity || '');
+      const color = order.color || '';
+      
+      // Use tab characters for consistent alignment
+      // First column: SKU (35 chars), Second: Size (20 chars), Third: Quantity (8 chars), Fourth: Color
+      const paddedSku = sku.padEnd(35, ' ');
+      const paddedSize = size.padEnd(20, ' ');
+      const paddedQuantity = quantity.padEnd(8, ' ');
+      
+      // Construct the line with tabs and proper spacing
+      const line = `${paddedSku}\t${paddedSize}\t${paddedQuantity}\t${color}`;
+      lines.push(line);
+    }
+    
+    return lines.join('\n');
+  };
+
+  /**
    * Extracts text between "Order No." and "TAX INVOICE" markers
    * @param {string} text - Full page text
    * @returns {string|null} Extracted text between markers, or null if not found
@@ -232,6 +277,7 @@ export default function MeeshoLabelSorter() {
         // Extract text between "Order No." and "TAX INVOICE"
         const orderInfo = extractOrderInfo(pageText);
         let parsedOrders = [];
+        let formattedLabel = '';
         
         if (orderInfo) {
           console.log(`\n📦 [Page ${pageNum}] Text between "Order No." and "TAX INVOICE":`);
@@ -240,6 +286,11 @@ export default function MeeshoLabelSorter() {
           // Parse the order info into objects
           parsedOrders = parseOrderInfo(orderInfo);
           console.log(`\n🛒 [Page ${pageNum}] Parsed Orders:`, parsedOrders);
+          
+          // Format into aligned label string
+          formattedLabel = formatLabelString(parsedOrders);
+          console.log(`\n🏷️  [Page ${pageNum}] Formatted Label:`);
+          console.log(formattedLabel);
           
           console.log("\n" + "-".repeat(80));
         } else {
@@ -252,7 +303,8 @@ export default function MeeshoLabelSorter() {
           textLength: pageText.length,
           preview: pageText.substring(0, 100) + (pageText.length > 100 ? '...' : ''),
           orderInfo: orderInfo,
-          parsedOrders: parsedOrders
+          parsedOrders: parsedOrders,
+          formattedLabel: formattedLabel
         });
       }
 
@@ -275,6 +327,53 @@ export default function MeeshoLabelSorter() {
     setError("");
     setTotalPages(0);
     setModifiedPdfBytes(null);
+  };
+
+  /**
+   * Handles checkbox change for field selection
+   */
+  const handleFieldToggle = (field) => {
+    setIncludeFields(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
+  };
+
+  /**
+   * Creates formatted label text based on selected fields
+   */
+  const createFormattedLabel = (parsedOrders) => {
+    if (!parsedOrders || parsedOrders.length === 0) return '';
+    
+    const lines = [];
+    
+    for (const order of orders) {
+      const parts = [];
+      
+      if (includeFields.SKU) {
+        let sku = order.SKU || '';
+        if (sku.length > 25) {
+          sku = sku.substring(0, 22) + '...';
+        }
+        parts.push(sku.padEnd(25));
+      }
+      
+      if (includeFields.size) {
+        parts.push((order.size || '').padEnd(15));
+      }
+      
+      if (includeFields.quantity) {
+        parts.push(String(order.quantity || '').padEnd(3));
+      }
+      
+      if (includeFields.color) {
+        parts.push(order.color || '');
+      }
+      
+      lines.push(parts.join(''));
+    }
+    
+    return lines.join('\n');
   };
 
   /**
@@ -302,12 +401,41 @@ export default function MeeshoLabelSorter() {
         const page = pdfDoc.getPage(i);
         const { width, height } = page.getSize();
         
-        // Get the extracted order info for this page
-        const orderInfo = extractedPages[i].orderInfo;
+        // Get the parsed orders for this page
+        const parsedOrders = extractedPages[i].parsedOrders;
         
-        if (orderInfo) {
-          // Split the text into lines
-          const lines = orderInfo.split('\n').filter(line => line.trim());
+        if (parsedOrders && parsedOrders.length > 0) {
+          // Create formatted label based on selected fields
+          const lines = [];
+          
+          for (const order of parsedOrders) {
+            const parts = [];
+            
+            if (includeFields.SKU) {
+              let sku = order.SKU || '';
+              if (sku.length > 35) {
+                sku = sku.substring(0, 32) + '...';
+              }
+              parts.push(sku.padEnd(35, ' '));
+            }
+            
+            if (includeFields.size) {
+              parts.push((order.size || '').padEnd(20, ' '));
+            }
+            
+            if (includeFields.quantity) {
+              parts.push(String(order.quantity || '').padEnd(8, ' '));
+            }
+            
+            if (includeFields.color) {
+              parts.push(order.color || '');
+            }
+            
+            if (parts.length > 0) {
+              // Join with tabs for proper spacing
+              lines.push(parts.join('\t'));
+            }
+          }
           
           if (lines.length > 0) {
             // Calculate the dimensions of the white background
@@ -439,6 +567,59 @@ export default function MeeshoLabelSorter() {
             </Stack>
           </Paper>
 
+          {/* Field Selection Checkboxes */}
+          {extractedPages.length > 0 && (
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                Select Fields to Include in PDF:
+              </Typography>
+              <FormGroup>
+                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={includeFields.SKU}
+                        onChange={() => handleFieldToggle('SKU')}
+                        color="primary"
+                      />
+                    }
+                    label="SKU"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={includeFields.size}
+                        onChange={() => handleFieldToggle('size')}
+                        color="primary"
+                      />
+                    }
+                    label="Size"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={includeFields.quantity}
+                        onChange={() => handleFieldToggle('quantity')}
+                        color="primary"
+                      />
+                    }
+                    label="Quantity"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={includeFields.color}
+                        onChange={() => handleFieldToggle('color')}
+                        color="primary"
+                      />
+                    }
+                    label="Color"
+                  />
+                </Box>
+              </FormGroup>
+            </Paper>
+          )}
+
           {/* Actions */}
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <Button
@@ -522,6 +703,29 @@ export default function MeeshoLabelSorter() {
                             }}
                           >
                             {page.orderInfo}
+                          </Box>
+                        </Box>
+                      )}
+                      
+                      {page.formattedLabel && (
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="subtitle2" color="success.main" fontWeight="bold" gutterBottom>
+                            🏷️ Formatted Label (Aligned):
+                          </Typography>
+                          <Box
+                            sx={{
+                              backgroundColor: '#e8f5e9',
+                              p: 2,
+                              borderRadius: 1,
+                              border: '1px solid #81c784',
+                              fontFamily: 'monospace',
+                              fontSize: '0.95rem',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              letterSpacing: '0.5px',
+                            }}
+                          >
+                            {page.formattedLabel}
                           </Box>
                         </Box>
                       )}
