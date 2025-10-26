@@ -102,6 +102,72 @@ export default function MeeshoLabelSorter() {
   };
 
   /**
+   * Parses formatted order info text into an array of order objects
+   * Splits on "   " (three spaces) to extract SKU, quantity, size, and color
+   * Creates a new object for every line, even if empty or incomplete
+   * @param {string} text - Formatted text with product information
+   * @returns {Array} Array of order objects
+   */
+  const parseOrderInfo = (text) => {
+    if (!text) return [];
+    
+    // Split by newline to get each product line (keep empty lines)
+    const lines = text.split('\n');
+    
+    const orders = [];
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Create order object for every line (even if empty)
+      const order = {
+        SKU: '',
+        quantity: '',
+        size: '',
+        color: ''
+      };
+      
+      // If line has content, try to parse it
+      if (trimmedLine.length > 0) {
+        // Split by "   " (three spaces) - this is the delimiter in the data
+        const parts = trimmedLine.split('   ').map(part => part.trim()).filter(part => part.length > 0);
+        
+        if (parts.length > 0) {
+          order.SKU = parts[0] || '';
+        }
+        
+        if (parts.length > 1) {
+          // Second part could be size or quantity
+          if (/^\d+$/.test(parts[1])) {
+            order.quantity = parseInt(parts[1], 10);
+          } else {
+            order.size = parts[1];
+          }
+        }
+        
+        if (parts.length > 2) {
+          // Third part
+          if (/^\d+$/.test(parts[2])) {
+            order.quantity = parseInt(parts[2], 10);
+          } else if (!order.size) {
+            order.size = parts[2];
+          } else {
+            order.color = parts[2];
+          }
+        }
+        
+        if (parts.length > 3) {
+          order.color = parts[3];
+        }
+      }
+      
+      orders.push(order);
+    }
+    
+    return orders;
+  };
+
+  /**
    * Extracts text between "Order No." and "TAX INVOICE" markers
    * @param {string} text - Full page text
    * @returns {string|null} Extracted text between markers, or null if not found
@@ -165,9 +231,16 @@ export default function MeeshoLabelSorter() {
 
         // Extract text between "Order No." and "TAX INVOICE"
         const orderInfo = extractOrderInfo(pageText);
+        let parsedOrders = [];
+        
         if (orderInfo) {
           console.log(`\n📦 [Page ${pageNum}] Text between "Order No." and "TAX INVOICE":`);
           console.log(orderInfo);
+          
+          // Parse the order info into objects
+          parsedOrders = parseOrderInfo(orderInfo);
+          console.log(`\n🛒 [Page ${pageNum}] Parsed Orders:`, parsedOrders);
+          
           console.log("\n" + "-".repeat(80));
         } else {
           console.log(`\n⚠️  [Page ${pageNum}] No text found between "Order No." and "TAX INVOICE"`);
@@ -178,7 +251,8 @@ export default function MeeshoLabelSorter() {
           text: pageText,
           textLength: pageText.length,
           preview: pageText.substring(0, 100) + (pageText.length > 100 ? '...' : ''),
-          orderInfo: orderInfo
+          orderInfo: orderInfo,
+          parsedOrders: parsedOrders
         });
       }
 
@@ -448,6 +522,30 @@ export default function MeeshoLabelSorter() {
                             }}
                           >
                             {page.orderInfo}
+                          </Box>
+                        </Box>
+                      )}
+                      
+                      {page.parsedOrders && page.parsedOrders.length > 0 && (
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="subtitle2" color="secondary" fontWeight="bold" gutterBottom>
+                            🛒 Parsed Orders (JSON):
+                          </Typography>
+                          <Box
+                            sx={{
+                              backgroundColor: '#fff3e0',
+                              p: 2,
+                              borderRadius: 1,
+                              border: '1px solid #ffb74d',
+                              fontFamily: 'monospace',
+                              fontSize: '0.85rem',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              maxHeight: 300,
+                              overflow: 'auto',
+                            }}
+                          >
+                            {JSON.stringify(page.parsedOrders, null, 2)}
                           </Box>
                         </Box>
                       )}
