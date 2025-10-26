@@ -238,7 +238,7 @@ export default function MeeshoLabelSorter() {
           if (lines.length > 0) {
             // Calculate the dimensions of the white background
             const lineHeight = 20;
-            const padding = 10;
+            const padding = 30;
             const startY = 150;
             const textWidth = width - 100; // Width for text area
             const textHeight = lines.length * lineHeight;
@@ -258,9 +258,9 @@ export default function MeeshoLabelSorter() {
             // Draw each line of extracted text, moving upward from bottom
             for (const line of lines) {
               page.drawText(line, {
-                x: 50,
+                x: 20,
                 y: yPosition,
-                size: 20,
+                size: 24,
                 font: helveticaFont,
                 color: rgb(0, 0, 0),
               });
