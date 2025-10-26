@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import {
@@ -16,7 +16,7 @@ import {
   FormControlLabel,
   FormGroup,
 } from '@mui/material';
-import { Upload, Description, Clear, Download } from '@mui/icons-material';
+import { Upload, Clear, Visibility, Print } from '@mui/icons-material';
 
 // Set up the worker for pdfjs
 if (typeof window !== 'undefined') {
@@ -30,6 +30,7 @@ export default function MeeshoLabelSorter() {
   const [error, setError] = useState("");
   const [totalPages, setTotalPages] = useState(0);
   const [modifiedPdfBytes, setModifiedPdfBytes] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null);
   const [includeFields, setIncludeFields] = useState({
     SKU: true,
     quantity: true,
@@ -38,10 +39,10 @@ export default function MeeshoLabelSorter() {
   });
 
   /**
-   * Handles file selection
+   * Handles file selection and auto-processes the PDF
    * @param {Event} event - File input change event
    */
-  const handleFileChange = (event) => {
+  const handleFileChange = async (event) => {
     const selectedFile = event.target.files[0];
     
     if (!selectedFile) {
@@ -57,6 +58,13 @@ export default function MeeshoLabelSorter() {
     setFile(selectedFile);
     setExtractedPages([]);
     setError("");
+    setModifiedPdfBytes(null);
+    setPdfUrl(null);
+    
+    // Auto-process the PDF
+    setTimeout(() => {
+      handleProcessPDF(selectedFile);
+    }, 100);
   };
 
   /**
@@ -239,9 +247,12 @@ export default function MeeshoLabelSorter() {
 
   /**
    * Processes the PDF file and extracts text from each page
+   * @param {File} pdfFile - Optional PDF file to process
    */
-  const handleProcessPDF = async () => {
-    if (!file) {
+  const handleProcessPDF = async (pdfFile = null) => {
+    const fileToProcess = pdfFile || file;
+    
+    if (!fileToProcess) {
       setError("Please upload a PDF file.");
       return;
     }
@@ -252,7 +263,7 @@ export default function MeeshoLabelSorter() {
 
     try {
       // Read the file as array buffer
-      const arrayBuffer = await file.arrayBuffer();
+      const arrayBuffer = await fileToProcess.arrayBuffer();
       
       // Load the PDF document
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
@@ -327,6 +338,10 @@ export default function MeeshoLabelSorter() {
     setError("");
     setTotalPages(0);
     setModifiedPdfBytes(null);
+    if (pdfUrl) {
+      URL.revokeObjectURL(pdfUrl);
+    }
+    setPdfUrl(null);
   };
 
   /**
@@ -340,14 +355,24 @@ export default function MeeshoLabelSorter() {
   };
 
   /**
+   * Auto-generate PDF when fields or extracted pages change
+   */
+  useEffect(() => {
+    if (extractedPages.length > 0 && file) {
+      handleGeneratePDFWithFile(file, extractedPages);
+    }
+  }, [includeFields]); // Regenerate when field selection changes
+
+  /**
    * Creates formatted label text based on selected fields
+   * @param {Array} parsedOrders - Array of parsed order objects
    */
   const createFormattedLabel = (parsedOrders) => {
     if (!parsedOrders || parsedOrders.length === 0) return '';
     
     const lines = [];
     
-    for (const order of orders) {
+    for (const order of parsedOrders) {
       const parts = [];
       
       if (includeFields.SKU) {
@@ -374,6 +399,127 @@ export default function MeeshoLabelSorter() {
     }
     
     return lines.join('\n');
+  };
+
+  /**
+   * Generates a PDF with extracted text printed on each page (with file and pages params)
+   * @param {File} pdfFile - PDF file to process
+   * @param {Array} pagesData - Extracted pages data
+   */
+  const handleGeneratePDFWithFile = async (pdfFile, pagesData) => {
+    if (!pdfFile || !pagesData || pagesData.length === 0) {
+      return;
+    }
+
+    try {
+      // Load the original PDF
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      
+      // Get the font
+      const helveticaFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      // Add text to each page
+      for (let i = 0; i < pagesData.length; i++) {
+        const page = pdfDoc.getPage(i);
+        const { width, height } = page.getSize();
+        
+        // Get the parsed orders for this page
+        const parsedOrders = pagesData[i].parsedOrders;
+        
+        if (parsedOrders && parsedOrders.length > 0) {
+          // Create formatted label based on selected fields
+          const lines = [];
+          
+          for (const order of parsedOrders) {
+            const parts = [];
+            
+            if (includeFields.SKU) {
+              let sku = order.SKU || '';
+              if (sku.length > 35) {
+                sku = sku.substring(0, 32) + '...';
+              }
+              parts.push(sku.padEnd(35, ' '));
+            }
+            
+            if (includeFields.size) {
+              parts.push((order.size || '').padEnd(20, ' '));
+            }
+            
+            if (includeFields.quantity) {
+              parts.push(String(order.quantity || '').padEnd(8, ' '));
+            }
+            
+            if (includeFields.color) {
+              parts.push(order.color || '');
+            }
+            
+            if (parts.length > 0) {
+              // Join with tabs for proper spacing
+              lines.push(parts.join('\t'));
+            }
+          }
+          
+          if (lines.length > 0) {
+            // Draw each line with white background
+            const lineHeight = 20;
+            let yPosition = 150; // Start from 150 pixels from the bottom
+            const startX = 20;
+            const fontSize = 24;
+            
+            for (const line of lines) {
+              // Replace tabs with spaces for WinAnsi encoding
+              const lineWithoutTabs = line.replace(/\t/g, ' ');
+              
+              // Get text width to draw background only on text
+              const textWidth = helveticaFont.widthOfTextAtSize(lineWithoutTabs, fontSize);
+              
+              // Draw white background rectangle for this line only
+              page.drawRectangle({
+                x: startX,
+                y: yPosition - 3, // Small padding
+                width: textWidth + 10, // Add small padding
+                height: lineHeight,
+                color: rgb(1, 1, 1), // White background
+              });
+              
+              // Draw text on top
+              page.drawText(lineWithoutTabs, {
+                x: startX,
+                y: yPosition,
+                size: fontSize,
+                font: helveticaFont,
+                color: rgb(0, 0, 0),
+              });
+              
+              yPosition += lineHeight; // Move to next line upward (closer to top)
+            }
+          }
+        }
+      }
+
+      // Save the PDF
+      const pdfBytes = await pdfDoc.save();
+      setModifiedPdfBytes(pdfBytes);
+      
+      // Create preview URL
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      
+      // Revoke old URL if exists
+      if (pdfUrl) {
+        URL.revokeObjectURL(pdfUrl);
+      }
+      
+      setPdfUrl(url);
+      setLoading(false);
+      
+      console.log("PDF generated successfully with text annotations");
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      setError(`Failed to generate PDF: ${error.message}`);
+      setLoading(false);
+    }
   };
 
   /**
@@ -438,31 +584,33 @@ export default function MeeshoLabelSorter() {
           }
           
           if (lines.length > 0) {
-            // Calculate the dimensions of the white background
+            // Draw each line with white background
             const lineHeight = 20;
-            const padding = 30;
-            const startY = 150;
-            const textWidth = width - 100; // Width for text area
-            const textHeight = lines.length * lineHeight;
-            
-            // Draw white background rectangle
-            page.drawRectangle({
-              x: 50 - padding,
-              y: startY - padding,
-              width: textWidth + (padding * 2),
-              height: textHeight + (padding * 2),
-              color: rgb(1, 1, 1), // White background
-            });
-            
-            // Start drawing from the very bottom of the page (y starts from bottom)
             let yPosition = 150; // Start from 150 pixels from the bottom
+            const startX = 20;
+            const fontSize = 24;
             
-            // Draw each line of extracted text, moving upward from bottom
             for (const line of lines) {
-              page.drawText(line, {
-                x: 20,
+              // Replace tabs with spaces for WinAnsi encoding
+              const lineWithoutTabs = line.replace(/\t/g, ' ');
+              
+              // Get text width to draw background only on text
+              const textWidth = helveticaFont.widthOfTextAtSize(lineWithoutTabs, fontSize);
+              
+              // Draw white background rectangle for this line only
+              page.drawRectangle({
+                x: startX,
+                y: yPosition - 3, // Small padding
+                width: textWidth + 10, // Add small padding
+                height: lineHeight,
+                color: rgb(1, 1, 1), // White background
+              });
+              
+              // Draw text on top
+              page.drawText(lineWithoutTabs, {
+                x: startX,
                 y: yPosition,
-                size: 24,
+                size: fontSize,
                 font: helveticaFont,
                 color: rgb(0, 0, 0),
               });
@@ -477,33 +625,58 @@ export default function MeeshoLabelSorter() {
       const pdfBytes = await pdfDoc.save();
       setModifiedPdfBytes(pdfBytes);
       
+      // Create preview URL
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      
+      // Revoke old URL if exists
+      if (pdfUrl) {
+        URL.revokeObjectURL(pdfUrl);
+      }
+      
+      setPdfUrl(url);
+      setLoading(false);
+      
       console.log("PDF generated successfully with text annotations");
     } catch (error) {
       console.error("Error generating PDF:", error);
       setError(`Failed to generate PDF: ${error.message}`);
-    } finally {
       setLoading(false);
     }
   };
 
   /**
-   * Downloads the modified PDF
+   * Opens the PDF in a new window for preview/print
    */
-  const handleDownloadPDF = () => {
-    if (!modifiedPdfBytes) {
-      setError("No modified PDF to download.");
+  const handlePreviewPDF = () => {
+    if (!pdfUrl) {
+      setError("No PDF to preview.");
       return;
     }
 
-    const blob = new Blob([modifiedPdfBytes], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = file ? file.name.replace('.pdf', '_with_text.pdf') : 'modified.pdf';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const printWindow = window.open(pdfUrl, '_blank');
+    if (!printWindow) {
+      setError("Please allow popups to view the PDF.");
+    }
+  };
+
+  /**
+   * Prints the PDF
+   */
+  const handlePrintPDF = () => {
+    if (!pdfUrl) {
+      setError("No PDF to print.");
+      return;
+    }
+
+    const printWindow = window.open(pdfUrl, '_blank');
+    if (printWindow) {
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    } else {
+      setError("Please allow popups to print the PDF.");
+    }
   };
 
   return (
@@ -622,47 +795,64 @@ export default function MeeshoLabelSorter() {
 
           {/* Actions */}
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <Button
-              variant="contained"
-              onClick={handleProcessPDF}
-              disabled={!file || loading}
-              startIcon={loading ? <CircularProgress size={20} /> : <Description />}
-            >
-              {loading ? "Processing..." : "Extract Text & Console Log"}
-            </Button>
-            
-            {extractedPages.length > 0 && (
+            {pdfUrl && !loading && (
               <>
                 <Button
                   variant="contained"
-                  onClick={handleGeneratePDF}
-                  disabled={loading}
-                  color="secondary"
-                  startIcon={loading ? <CircularProgress size={20} /> : <Description />}
+                  onClick={handlePreviewPDF}
+                  color="success"
+                  startIcon={<Visibility />}
                 >
-                  {loading ? "Generating..." : "Generate PDF with Text"}
+                  Open in New Tab
                 </Button>
-                
-                {modifiedPdfBytes && (
-                  <Button
-                    variant="contained"
-                    onClick={handleDownloadPDF}
-                    disabled={loading}
-                    color="success"
-                    startIcon={<Download />}
-                  >
-                    Download Modified PDF
-                  </Button>
-                )}
+                <Button
+                  variant="contained"
+                  onClick={handlePrintPDF}
+                  color="primary"
+                  startIcon={<Print />}
+                >
+                  Print PDF
+                </Button>
               </>
             )}
           </Box>
 
+          {/* PDF Preview */}
+          {pdfUrl && !loading && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                PDF Preview
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Box
+                  component="iframe"
+                  src={pdfUrl}
+                  sx={{
+                    width: '100%',
+                    height: '600px',
+                    border: 'none',
+                  }}
+                />
+              </Paper>
+            </Box>
+          )}
+
           {/* Results Summary */}
-          {totalPages > 0 && (
+          {loading && (
+            <Alert severity="info">
+              Processing PDF... Please wait.
+            </Alert>
+          )}
+          {totalPages > 0 && !loading && pdfUrl && (
             <Alert severity="success">
               Successfully processed {totalPages} page{totalPages !== 1 ? 's' : ''}. 
-              Check the console for text output from each page.
+              Ready to preview or print!
+            </Alert>
+          )}
+          {totalPages > 0 && !loading && !pdfUrl && (
+            <Alert severity="warning">
+              Successfully processed {totalPages} page{totalPages !== 1 ? 's' : ''}. 
+              Generating PDF...
             </Alert>
           )}
 
